@@ -1,4 +1,5 @@
 import json
+import traceback
 from typing import Any, Dict, List, Optional, Union
 
 from fastapi import Request, HTTPException
@@ -117,7 +118,9 @@ async def handle_mcp_request(request: Request, es_client: ElasticsearchClient, a
                 return JSONResponse(JsonRpcResponse(id=request_id, error=JsonRpcError(code=-32601, message=str(e)).dict()).dict(), status_code=404)
             except Exception as e:
                 # その他の内部サーバーエラー
-                return JSONResponse(JsonRpcResponse(id=request_id, error=JsonRpcError(code=-32603, message=f"Internal server error during tool call: {str(e)}").dict()).dict(), status_code=500)
+                error_message = f"Internal server error during tool call: {str(e)}\n{traceback.format_exc()}"
+                print(error_message, flush=True) # エラーメッセージとスタックトレースをログに出力
+                return JSONResponse(JsonRpcResponse(id=request_id, error=JsonRpcError(code=-32603, message=error_message).dict()).dict(), status_code=500)
 
         elif rpc_request.method == "resources/list":
             # リソースリストのリクエスト
@@ -143,4 +146,6 @@ async def handle_mcp_request(request: Request, es_client: ElasticsearchClient, a
         return JSONResponse(JsonRpcResponse(id=None, error=JsonRpcError(code=-32700, message="Parse error").dict()).dict(), status_code=400)
     except Exception as e:
         # その他の予期せぬエラー
-        return JSONResponse(JsonRpcResponse(id=request_id, error=JsonRpcError(code=-32603, message=f"Internal server error: {str(e)}").dict()).dict(), status_code=500)
+        error_message = f"Internal server error: {str(e)}\n{traceback.format_exc()}"
+        print(error_message, flush=True) # エラーメッセージとスタックトレースをログに出力
+        return JSONResponse(JsonRpcResponse(id=request_id, error=JsonRpcError(code=-32603, message=error_message).dict()).dict(), status_code=500)

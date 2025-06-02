@@ -41,9 +41,8 @@ class ElasticsearchClient:
         # HTTPエラーがあれば例外を投げる
         response.raise_for_status()
         data = response.json()
-        hits = data.get("hits", {}).get("hits", [])
-        # 検索結果から完全なヒットオブジェクトを返す
-        return hits
+        # 検索結果から完全なElasticsearchレスポンスを返す
+        return data
 
     def get(self, doc_id: str, index: str):
         """

@@ -1,0 +1,13 @@
+start_urls:
+  - https://www.elastic.co/guide/en/elasticsearch/reference/1.5/index.html
+allowed_domains:
+  - www.elastic.co
+target_url_patterns:
+  - "https://www\\.elastic\\.co/guide/en/elasticsearch/reference/1.5/.*"
+exclude_url_patterns: []
+max_depth: 10
+delay: 0.5
+user_agent: "MSFR Crawler/1.0"
+es_index: "test_index"
+es_index_description: "Elasticsearch 1.5 Reference Guide."
+max_documents: 20

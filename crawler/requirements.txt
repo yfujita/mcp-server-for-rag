@@ -1,0 +1,4 @@
+PyYAML
+pydantic
+beautifulsoup4
+requests

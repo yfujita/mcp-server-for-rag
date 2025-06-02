@@ -54,3 +54,6 @@ htmlcov/
 
 # Elasticsearch data
 esdata/
+
+# Crawler Config
+crawler_config.json

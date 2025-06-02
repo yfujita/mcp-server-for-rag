@@ -3,6 +3,8 @@
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
+script_dir=$(dirname "$0")
+
 echo "Starting integration tests..."
 
 # Clean up previous test index if it exists
@@ -19,42 +21,14 @@ echo "Checking Elasticsearch status..."
 curl -f http://localhost:9200/
 echo "Elasticsearch is running."
 
-# 3. ESテスト用インデックス作成
-echo "Creating test index 'test_index'..."
-curl -X PUT "http://localhost:9200/test_index" -H 'Content-Type: application/json' -d'
-{
-  "settings": {
-    "index": {
-      "number_of_shards": 1,
-      "number_of_replicas": 0
-    }
-  },
-  "mappings": {
-    "_meta": {
-      "description": "Test index for integration testing."
-    },
-    "properties": {
-      "title": {
-        "type": "text"
-      },
-      "content": {
-        "type": "text"
-      }
-    }
-  }
-}'
-echo ""
-echo "Test index created."
+# Crawl Configの反映
+echo "Applying crawl configuration..."
+cp "$script_dir/../../crawler_config/crawler_config_it.yaml" "$script_dir/../../crawler_config/crawler_config.yaml"
 
-# 4. ESテスト用ドキュメント作成
-echo "Creating test document in 'test_index'..."
-curl -X POST "http://localhost:9200/test_index/_doc" -H 'Content-Type: application/json' -d'
-{
-  "title": "Test Document",
-  "content": "This is a test document for integration testing."
-}'
-echo ""
-echo "Test document created."
+# 3. Crawler起動
+echo "Starting Crawler..."
+bash "$script_dir/../../run-crawler.sh"
+curl -XPOST localhost:9200/_refresh
 
 # Give ES a moment to index the document
 sleep 2
@@ -109,13 +83,13 @@ SEARCH_RESULT=$(curl -X POST "http://localhost:8000/mcp" -H 'Content-Type: appli
     "name": "search",
     "arguments": {
       "index": "test_index",
-      "query": "test document"
+      "query": "search document"
     }
   },
   "id": 2
 }')
 echo "$SEARCH_RESULT"
-echo "$SEARCH_RESULT" | grep "Test Document"
+echo "$SEARCH_RESULT" | grep "search"
 echo "MCP search tool test passed."
 
 # Extract document ID from search result using jq
@@ -125,8 +99,10 @@ if [ -z "$DOCUMENT_ID" ]; then
   echo "Error: Could not extract document ID from search result."
   exit 1
 fi
-
 echo "Extracted Document ID: $DOCUMENT_ID"
+
+NEXT_CURSOR=$(echo "$SEARCH_RESULT" | jq -r '.result.next_cursor')
+echo "Next Cursor: $NEXT_CURSOR"
 
 # 7. MCP動作確認 (get_document_by_idツールを使用)
 echo "Testing MCP get_document_by_id tool with ID: $DOCUMENT_ID..."
@@ -145,5 +121,27 @@ curl -X POST "http://localhost:8000/mcp" -H 'Content-Type: application/json' -d"
 }"
 echo ""
 echo "MCP get_document_by_id tool test passed."
+
+# 6. MCP動作確認 (検索ツールを使用)
+echo "Testing MCP search tool paging..."
+SEARCH_RESULT=$(curl -X POST "http://localhost:8000/mcp" -H 'Content-Type: application/json' -d'
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "search",
+    "arguments": {
+      "index": "test_index",
+      "query": "search document",
+      "cursor": "'"$NEXT_CURSOR"'"
+    }
+  },
+  "id": 2
+}')
+echo "$SEARCH_RESULT"
+echo "$SEARCH_RESULT" | grep "search"
+echo "MCP search tool test passed."
+
+
 
 echo "Integration tests completed successfully."

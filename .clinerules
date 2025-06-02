@@ -87,9 +87,7 @@ RAGのためのMCPサーバーのマイクロサービス群。
 - 検索エンジン
   - Elasticsearchを使用
 - Crawler
-  - Webページをクロールして、ドキュメントを収集し、Indexerに送信する
-- Indexer
-    - Crawlerから受け取ったドキュメントをElasticsearch用に変換し、Elasticsearchに送信する
+  - Webページをクロールして、ドキュメントを収集し、Elasticsearchに送信する
 
 ## 技術スタック
 
@@ -106,7 +104,6 @@ composeの定義ファイルはcompose.yamlに記載する。
 * mcp-api
 * elasticsearch
 * crawler (手動実行)
-* indexer
 
 ### APIサーバー  (mcp/indexer)
 
@@ -156,6 +153,10 @@ MCPの仕様についての情報が必要な場合は、以下のファイル�
 - 主要機能のユニットテスト
 - エッジケースの考慮
 - テストが実行可能であることを確認
+
+### リーダブルコード
+
+- コードのより良い書き方は reference/readable_code.md を参照
 
 ## コミットメッセージのガイドライン
 

@@ -24,6 +24,7 @@ class SearchResultItem(BaseModel):
 
 class SearchResults(BaseModel):
     items: List[SearchResultItem]
+    next_cursor: Optional[str] = None
 
 # get_document_by_id_toolの結果を表現するPydanticモデル
 class DocumentContent(BaseModel):
@@ -39,7 +40,8 @@ TOOLS: List[Tool] = [
         parameters=ToolParameters(
             properties={
                 "query": {"type": "string", "description": "Keyword to search for"},
-                "index": {"type": "string", "description": "Index to search in"}
+                "index": {"type": "string", "description": "Index to search in"},
+                "cursor": {"type": "string", "description": "Opaque cursor for pagination, obtained from a previous search result.", "nullable": True}
             },
             required=["query", "index"]
         )
@@ -77,42 +79,84 @@ class IndexListResult(BaseModel):
     indices: List[IndexInfo]
 
 
-def search_tool(es_client: ElasticsearchClient, query: str, index: str) -> SearchResults:
+def search_tool(es_client: ElasticsearchClient, query: str, index: str, cursor: Optional[str] = None) -> SearchResults:
     """
     タイトルまたはコンテンツにキーワードを含むドキュメントを検索し、
     {id, title} のリストを返します。
     指定されたindexを検索します。
     This function implements the 'search' tool logic.
     """
+    size = 10 # ページングサイズを10に固定
+    from_ = 0
+    if cursor:
+        try:
+            from_ = int(cursor)
+        except ValueError:
+            # 無効なカーソル値の場合は0から開始
+            from_ = 0
+
     body = {
         "query": {
             "multi_match": {
                 "query": query,
-                "fields": ["title", "content"]
+                "fields": [
+                    "title",
+                    "content",
+                    "content_ngram.phrase",
+                    "content_en",
+                    "content_en.phrase^10",
+                    "content_ja",
+                    "content_ja.phrase^10"
+                ]
             }
         },
         "highlight": {
             "fields": {
                 "content": {},
-                "title": {}
+                "title": {},
+                "content_ngram": {},
+                "content_ja": {}
             },
             "pre_tags": ["<em>"],
             "post_tags": ["</em>"]
-        }
+        },
+        "from": from_,
+        "size": size
     }
     # es_client.searchはハイライト情報を含む完全なElasticsearchヒットを返すように変更されることを想定
-    search_hits = es_client.search(body, index)
+    search_response = es_client.search(body, index)
+    search_hits = search_response.get("hits", {}).get("hits", [])
+    total_hits = search_response.get("hits", {}).get("total", {}).get("value", 0)
 
     items = []
     for hit in search_hits:
         doc_id = hit["_id"]
         doc_title = hit["_source"].get("title")
-        highlight = hit.get("highlight")
         
+        # 優先順位に従ってハイライトを取得
+        highlight = None
+        if "highlight" in hit:
+            if "content_ja" in hit["highlight"]:
+                highlight = {"content": hit["highlight"]["content_ja"]}
+            elif "content_ngram" in hit["highlight"]:
+                highlight = {"content": hit["highlight"]["content_ngram"]}
+            elif "content" in hit["highlight"]:
+                highlight = {"content": hit["highlight"]["content"]}
+            else:
+                highlight = {}
+            
+            if "title" in hit["highlight"]:
+                highlight["title"] = hit["highlight"]["title"]
+
         if doc_id and doc_title:
             items.append(SearchResultItem(id=doc_id, title=doc_title, highlight=highlight))
     
-    return SearchResults(items=items)
+    # next_cursorの計算
+    next_cursor = None
+    if (from_ + len(items)) < total_hits:
+        next_cursor = str(from_ + len(items))
+    
+    return SearchResults(items=items, next_cursor=next_cursor)
 
 def get_document_by_id_tool(es_client: ElasticsearchClient, document_id: str, index: str) -> DocumentContent:
     """
@@ -179,7 +223,8 @@ def handle_tool_call(es_client: ElasticsearchClient, tool_name: str, arguments: 
             raise ValueError("Invalid arguments for search tool. Expected 'query' and 'index'.")
         query = arguments.get("query")
         index = arguments.get("index")
-        return search_tool(es_client, query, index).model_dump() # Pydanticモデルを辞書に変換して返す
+        cursor = arguments.get("cursor")
+        return search_tool(es_client, query, index, cursor).model_dump() # Pydanticモデルを辞書に変換して返す
     elif tool_name == "get_document_by_id":
         if not isinstance(arguments, dict) or "document_id" not in arguments or "index" not in arguments:
             raise ValueError("Invalid arguments for get_document_by_id tool. Expected 'document_id' and 'index'.")
