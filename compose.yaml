@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.18.1
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms2g -Xmx2g
+      - xpack.security.enabled=false
+    ports:
+      - "9200:9200"
+    volumes:
+      - ./esdata:/usr/share/elasticsearch/data
+
+  mcp-api:
+    build:
+      context: ./mcp-api
+    env_file:
+      - ./mcp-api/.env.example
+    ports:
+      - "8000:8000"
+    depends_on:
+      - elasticsearch

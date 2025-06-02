@@ -1,0 +1,237 @@
+Model Context Protocol (MCP) サーバーAPIの設計：包括的技術ガイドI. エグゼクティブサマリーModel Context Protocol (MCP) は、大規模言語モデル (LLM) と外部システム間のインタラクションを標準化するために設計されたプロトコルであり、AIエージェントエコシステムにおける相互運用性、セキュリティ、拡張性を実現する上で中心的な役割を果たします 1。MCPサーバーは、LLMアプリケーション（クライアント）に対してツール、リソース、プロンプトといった機能を提供し、LLMがリアルタイムで外部情報にアクセスし、実世界のタスクを実行できるようにします 1。本レポートでは、MCPサーバーを構築するために必要なAPIインターフェース仕様について、初期化 (initialize)、ツール (tool)、リソース (resource)、プロンプト (prompt)、および関連するリスト操作や管理操作を中心に、その目的、リクエスト・レスポンス形式、パラメータ、機能、エラーハンドリング、セキュリティ考慮事項を包括的に解説します。MCPの核心的な価値は標準化にあり、これによりツール提供者（サーバー実装者）とLLMアプリケーション開発者（クライアント実装者）双方の開発オーバーヘッドが長期的に大幅に削減されることが期待されます。従来、LLMを多様なツールに接続するには、LLMとツールの組み合わせごとにカスタムのポイントツーポイント統合が必要であり、これはN*Mの問題でした。MCPは共通インターフェースを定義することで、これをN+Mの問題に単純化することを目指しています 1。MCPサーバー開発への投資は、単一のLLMやクライアント向けのプロプライエタリAPIを構築するよりも、広範な互換性と再利用性をもたらす戦略的な意味を持ちます。「AIのためのUSB-Cポート」というアナロジー 4 は、プラグアンドプレイの相互運用性を示唆しており強力ですが、真にシームレスな連携を実現するには、サーバー実装によるプロトコルへの厳格な準拠と、多様なサーバー能力や潜在的な癖に対するクライアント側の堅牢な処理が不可欠です。USB-Cデバイスが機能サポートのレベル（データ転送速度、電力供給、表示機能など）にばらつきがあるのと同様に、MCPサーバーも特に初期段階ではオプション機能の実装や仕様解釈が若干異なる可能性があり、開発者は標準化されたエコシステムであっても統合のニュアンスに備える必要があります。II. MCPサーバー実装のための基礎A. MCP概要：目的、利点、主要アーキテクチャコンポーネント（ホスト、クライアント、サーバー）Model Context Protocol (MCP) は、LLMアプリケーション（ホスト/クライアント）と外部データソースやツール（サーバー）間のシームレスな統合を可能にするために設計されたオープンプロトコルです 1。その主要な構成要素は以下の通りです。
+ホスト (Host): LLMアプリケーションであり、例えばClaude DesktopやIDEなどが該当します。接続を開始し、MCPクライアントを含みます 2。ホストはユーザーの同意確認や全体的な調整に責任を持ちます 9。
+クライアント (Client): ホスト内に存在し、MCPサーバーと1対1の接続を維持し、リクエストとレスポンスを変換します 4。
+サーバー (Server): クライアントに対してコンテキスト（リソース）、実行可能な機能（ツール）、プロンプトテンプレート（プロンプト）を提供するサービスプロバイダです 2。
+MCPの利点には、標準化によるカスタム統合労力の削減、相互運用性の促進、サービスの構成可能性、明確なインタラクション境界の定義によるセキュリティ強化などが挙げられます 2。クライアントとサーバー間の1対1の接続モデル 4 は、個々の統合における状態管理を単純化しますが、ホストアプリケーションが複数のMCPサーバーと対話する場合は、これらの複数の接続を管理する必要があります。例えば、IDEのようなホストアプリケーションがファイルシステムサーバー、GitHubサーバー、データベースサーバーのツールを同時に利用したい場合、それぞれに対して個別のMCPクライアントをインスタンス化し、管理する必要が生じます。このアーキテクチャ上の選択は、個々のMCPサーバーの設計を簡素化する（一度に1つのクライアント接続のみを考慮すればよい）一方で、複数の同時セッションの管理や機能集約の複雑さをホストアプリケーション側に移行させます。また、「ホスト」と「クライアント」の定義はドキュメントによってニュアンスが異なる場合がありますが、サーバー実装者にとって重要なのは、サーバーがプロトコルに準拠した「MCPクライアント」エンティティと対話するという点です。そのクライアントがより大きな「ホスト」アプリケーション内にどのように組み込まれているかは、サーバーの直接的なAPIインタラクションの外部にある考慮事項です 2。B. 通信プロトコル：JSON-RPC 2.0メッセージ構造（リクエスト、レスポンス、ノーティフィケーション）MCPはJSON-RPC 2.0に基づいて構築されています 2。これは軽量でトランスポート非依存のプロトコルであり、メッセージはJSON形式でエンコードされます。主要なメッセージオブジェクトは以下の通りです。
+
+リクエストオブジェクト (Request Object):
+
+jsonrpc: 文字列。"2.0"でなければなりません。
+method: 文字列。呼び出されるメソッドの名前。
+params: 構造化された値。メソッドのパラメータを保持します。オブジェクトまたは配列形式です。
+id: 文字列または数値。レスポンスと関連付けるために使用されます。ノーティフィケーションの場合は省略されます。
+
+
+
+レスポンスオブジェクト（成功時）(Response Object - Success):
+
+jsonrpc: 文字列。"2.0"。
+result: 呼び出されたメソッドによって決定される値。
+id: リクエストIDと一致しなければなりません。
+
+
+
+レスポンスオブジェクト（エラー時）(Response Object - Error):
+
+jsonrpc: 文字列。"2.0"。
+error: オブジェクト。code（数値）、message（文字列）を含み、オプションでdata（任意の値）を含むことができます。
+id: リクエストIDと一致しなければなりません（リクエスト解析中のエラーの場合はnullの場合があります）。
+
+
+
+ノーティフィケーションオブジェクト (Notification Object):idフィールドのないリクエストオブジェクトです。サーバーは応答を期待されません。
+
+JSON-RPC 2.0の採用は、明確に定義された、軽量で、トランスポート非依存の基盤を意味します。これにより、解析が簡素化され、MCPメッセージの伝送方法（例：stdio、HTTP）に柔軟性がもたらされます。MCPサーバー開発者は、新しいメッセージフレーミングやリクエスト/レスポンス相関メカニズムを考案する必要がなく、既存のJSON-RPCライブラリを活用できる可能性があります。MCPはJSON-RPCをエンベロープとして使用しますが、特定のmethod名（例：tools/list、resources/read）およびparams/result構造はMCP仕様自体によって定義され、JSON-RPCの上にAPIコントラクトを効果的に作成します。TypeScriptスキーマ (schema.ts) 12 がこのコントラクトの主要な定義を提供しますが、もし機械可読なAPI定義がTypeScriptスキーマを超えて必要とされる場合（例えば、他言語でのクライアントライブラリ生成やAPIテストツールのため）、JSON-RPC API向けに設計されたOpenRPC 14 がこれらのMCP固有メソッドを正式に文書化する価値のある方法となり得ます。C. トランスポート層：Stdio、HTTP with SSE、およびStreamable HTTPMCPサーバーが使用できる標準化されたトランスポートメカニズムは以下の通りです。
+Stdio (Standard Input/Output): ローカルサーバープロセス（例：サブプロセスとして実行されるファイルシステムサーバー）に最適です。リクエストはstdin経由で、レスポンスはstdout経由で通信します 4。プロセス管理が単純です 8。
+HTTP with SSE (Server-Sent Events): リモート通信用です。クライアントからサーバーへのメッセージにはHTTP POSTを使用し、サーバーからクライアントへのメッセージ（ノーティフィケーション、非同期レスポンス）にはSSEを使用します 5。これは「レガシープロトコル」（2024-11-05バージョン）として言及されています 17。
+Streamable HTTP: 「モダンプロトコル」（2025-03-26バージョン）であり、双方向通信のために単一のPOSTエンドポイントを使用します 7。これは新しいリモートサーバー実装で優先される方法と考えられます。
+リモートアクセスをターゲットとするサーバー実装者は、将来の互換性のためにStreamable HTTPを優先すべきであり、stdioはローカルツール統合にとって引き続き重要です。古いクライアントとの後方互換性のためにHTTP+SSEのサポートが必要になる場合があります。トランスポートの選択は、デプロイメントアーキテクチャとセキュリティ考慮事項（例：リモートの場合はTLS、ローカルの場合はプロセス分離）に影響を与えます。リモートトランスポートは本質的にネットワーク通信を伴うため、TLSのようなセキュリティ対策が必要です 8。ローカルであるStdioは異なるセキュリティ上の意味合いを持ち、サーバーが任意のコードを実行する場合、プロセスのパーミッションやサンドボックス化により重点が置かれます。III. 主要MCPサーバーAPIインターフェース仕様このセクションでは、MCPサーバーが実装しなければならない主要なJSON-RPCメソッドについて詳述します。言及されるすべての型定義の権威的な情報源は、schema.tsファイルです 12。表1：MCP主要メソッド概要メソッド (Method)方向 (Direction)主要目的 (Core Purpose)主要リクエストフィールド (Key Request Fields)主要結果/エラーフィールド (Key Result/Error Fields)initializeClient → Serverプロトコルバージョンと能力のネゴシエーションprotocolVersion, capabilities (ClientCapabilities), clientInfoprotocolVersion, capabilities (ServerCapabilities), serverInfo, instructions?tools/listClient → Server利用可能なツールの一覧取得cursor?tools (Tool), nextCursor?tools/callClient → Server特定のツールの実行name, arguments, progressToken?content (ToolContent), isError?, error? (ErrorObject)resources/listClient → Server利用可能なリソースの一覧取得cursor?, roots? (ResourceRoot)resources (Resource), nextCursor?resources/readClient → Server特定のリソースのコンテンツ取得uri, progressToken?contents (ResourceContent)resources/subscribeClient → Server特定リソースの更新購読uri(成功時は空のresult)resources/unsubscribeClient → Server特定リソースの更新購読解除uri(成功時は空のresult)prompts/listClient → Server利用可能なプロンプトテンプレートの一覧取得cursor?prompts (Prompt), nextCursor?prompts/getClient → Server特定プロンプトテンプレートの取得（引数展開）name, arguments?, progressToken?description?, messages (Message)notifications/initializedClient → Server初期化完了通知(Notification)(N/A)notifications/cancelledClient ←→ Serverリクエストキャンセル通知requestId, reason?(N/A)notifications/progressServer → Client長時間処理の進捗通知progressToken, progress, total?, message?(N/A)notifications/logServer → Clientログメッセージ通知type (LogLevel), message(N/A)notifications/tools/list_changedServer → Clientツールリスト変更通知(Notification)(N/A)notifications/resources/list_changedServer → Clientリソースリスト変更通知(Notification)(N/A)notifications/resources/updatedServer → Clientリソースコンテンツ変更通知uri(N/A)notifications/prompts/list_changedServer → Clientプロンプトリスト変更通知(Notification)(N/A)A. 初期化インターフェース (initialize)
+目的: クライアントがサーバーに接続した際に最初に送信されるリクエストです。使用するプロトコルバージョンの確立と、クライアントとサーバー双方の能力宣言に不可欠です 2。
+リクエスト (InitializeRequest 12):
+
+method: "initialize"
+params:
+
+protocolVersion: string (クライアントがサポートする最新のMCPバージョン、例: "2025-03-26")
+capabilities: ClientCapabilities オブジェクト
+clientInfo: Implementation オブジェクト (name: string, version: string)
+
+
+
+
+レスポンス (InitializeResult 12):
+
+result:
+
+protocolVersion: string (サーバーが選択したMCPバージョン。クライアントがサポートできない場合は切断しなければなりません)
+capabilities: ServerCapabilities オブジェクト
+serverInfo: Implementation オブジェクト (name: string, version: string)
+instructions?: string (オプション: LLMがサーバーをどのように使用するかについてのヒント 12)
+
+
+
+
+能力オブジェクト (ClientCapabilities, ServerCapabilities 12):
+これらのオブジェクトは、roots（リソースリストコンテキスト用 9）、sampling（サーバー主導のLLMインタラクション 2）、prompts 18、resources 18、tools 18、logging 18、completion、progress、cancellationといったサポートされる機能を詳述します。
+
+listChanged: prompts、resources、tools の能力内にあるブール型フラグで、リスト変更通知のサポートを示します 12。
+
+
+初期化後ノーティフィケーション (notifications/initialized 18): 成功したinitializeレスポンスの後、クライアントからサーバーに送信され、通常のメッセージ交換の準備ができたことを示します。
+initializeハンドシェイクは、バージョン互換性と機能発見の基本です。サーバーは自身の能力を正しく報告し、クライアントはこれらを尊重し、サーバーがサポートすると主張するメソッド/機能のみを呼び出す必要があります。ここでの不履行は統合の破綻につながります。また、InitializeResult内のオプションのinstructionsフィールド 12 は、サーバーが最初からLLMの振る舞いを誘導するための微妙かつ強力な方法であり、サーバー固有のツールやリソースとのインタラクションの質を向上させる可能性があります。例えば、複雑な科学データサーバーは、「データセットをクエリする際は、最適な結果を得るために常に'date_range'パラメータを指定してください」といった指示を提供できます。B. ツールインターフェース (tools)
+目的: サーバーが実行可能な機能を公開し、LLMがアクションを実行したり計算を行ったり、外部システムやデータと対話したりできるようにします 2。ツールは「モデル制御」です 5。
+tools/list (ListToolsRequest, ListToolsResult 12):
+
+目的: クライアント（ひいてはLLM）がサーバーの提供するツールを発見できるようにします。
+リクエスト: method: "tools/list"。ページネーションのためにparams: { cursor?: string }を含む場合があります 24。
+レスポンス: result: { tools: Tool, nextCursor?: string }。toolsはToolオブジェクトの配列です。
+ツール定義 (Tool 12):
+
+name: string (ツールの一意な識別子)
+description?: string (人間可読。LLMがいつツールを使用するかを判断するのに役立ちます 17)
+parameters?: ToolParameters オブジェクト (入力パラメータを定義するJSONスキーマ 12)
+annotations?: ToolAnnotations (UXヒント、副作用情報 21)
+examples?: ToolExample (21)
+表2：Toolオブジェクト定義
+
+
+
+
+フィールド名 (Field Name)型 (Type)必須 (Required)説明 (Description)namestringYesツールの一意な識別子。descriptionstring (optional)No人間可読な説明。LLMがツールの目的と使用タイミングを理解するのに役立ちます。parametersToolParameters (JSON Schema, optional)Noツールの入力パラメータを定義するJSONスキーマオブジェクト。annotationsToolAnnotations (optional)NoUX固有の情報、副作用に関する情報、クライアントがツールを分類・提示するのに役立つ注釈。examplesToolExample (optional)Noツールの使用例。LLMがどのようにツールを呼び出すべきかの具体例を提供します。
+tools/call (CallToolRequest, CallToolResult 12):
+
+目的: 提供された引数で特定のツールを実行します。
+リクエスト: method: "tools/call", params: { name: string, arguments: object, progressToken?: ProgressToken }。argumentsはツールのパラメータスキーマに一致するオブジェクトです。progressTokenは進捗報告のためにオプションです 12。
+レスポンス: result: { content: ToolContent, isError?: boolean, error?: ErrorObject }。
+
+content: ツールの出力を表すToolContentアイテムの配列（例：テキスト、画像、リソース）。
+isError: boolean。ツール実行がエラーになった場合はtrue 21。
+error: isErrorがtrueの場合のErrorObject。エラー詳細を提供します。
+
+
+
+
+ツールパラメータ定義 (ToolParameter 12): 通常、type、properties、requiredなどを定義するJSONスキーマオブジェクトです 21。
+ツールコンテンツ (ToolContent 12): TextContent、ImageContent、ResourceContentなど、リッチな出力が可能です。
+ツールリスト変更ノーティフィケーション (notifications/tools/list_changed 12): サーバーがlistChanged能力をサポートし、利用可能なツールが変更された場合にサーバーから送信されます。
+ツールdescriptionとparametersスキーマの明確さと包括性は、効果的なLLMインタラクションにとって最も重要です 17。曖昧または不正確な定義は、LLMによるツールの誤用や正しい引数の生成失敗につながります 27。CallToolResult内のisErrorフラグとerrorオブジェクト 12 は、ツールがLLMが潜在的に理解し対応できる障害を報告するための構造化された方法を提供し、プロトコルレベルのエラーとは区別されます。これにより、エージェントによるより高度なエラー処理が可能になります。UXおよび副作用情報のためのツールアノテーション 21 は、よりリッチなクライアント統合とより安全なツール使用のための重要ですが、まだ十分に活用されていない可能性のある機能です。C. リソースインターフェース (resources)
+目的: サーバーがデータやコンテンツ（ファイル、データベースレコード、APIレスポンスなど）を公開し、クライアントがLLMインタラクションのコンテキストとして読み取り、使用できるようにします 2。リソースは「アプリケーション制御」であり 5、クライアントアプリケーションがいつどのように使用するかを決定することがよくあります。
+resources/list (ListResourcesRequest, ListResourcesResult 12):
+
+目的: 利用可能なリソースを発見します。
+リクエスト: method: "resources/list"。ページネーションのためにparams: { cursor?: string }を含む場合があります 24。クライアントがリスト表示の開始点を指定したい場合（例：ファイルシステムサーバーの特定のディレクトリ）、roots?: ResourceRootを含むこともできます 9。
+レスポンス: result: { resources: Resource, nextCursor?: string }。
+リソース定義 (Resource 12):
+
+uri: string (一意な識別子。例: file:///path/to/file, postgres://db/table/row)
+name: string (人間可読な名前)
+description?: string
+mimeType?: string (例: text/plain, application/json, image/png)
+表3：Resourceオブジェクト定義
+
+
+
+
+フィールド名 (Field Name)型 (Type)必須 (Required)説明 (Description)uristringYesリソースの一意な識別子。URI形式（例：file:///, db://）。namestringYes人間可読なリソース名。descriptionstring (optional)Noリソースに関する人間可読な説明。mimeTypestring (optional)NoリソースのMIMEタイプ（例：text/plain, application/json）。クライアントがコンテンツを解釈するのに役立ちます。
+resources/read (ReadResourceRequest, ReadResourceResult 12):
+
+目的: 特定のリソースのコンテンツを取得します。
+リクエスト: method: "resources/read", params: { uri: string, progressToken?: ProgressToken }。
+レスポンス: result: { contents: ResourceContent }。単一の読み取りリクエストで複数のResourceContentパーツを返すことができます（例：ディレクトリ読み取りで複数のファイルの内容を返す 23）。
+リソースコンテンツ (ResourceContent 12):
+
+uri: string (返されるコンテンツのURI)
+mimeType?: string
+text?: string (テキストリソース用)
+blob?: string (バイナリリソース用のbase64エンコード)
+isError?: boolean
+error?: ErrorObject
+
+
+
+
+リソースURIと型: URIはサーバー定義です（例：file://, postgres://, screen:// 23）。型にはテキスト（UTF-8）とバイナリ（base64エンコードされたblob）が含まれます 23。
+リソーステンプレート (resources/templates/list): サーバーはリソースを動的に生成するためのテンプレートを公開できます 23。
+リソース更新ノーティフィケーション:
+
+notifications/resources/list_changed 12: 利用可能なリソースのリストが変更された場合、サーバーはクライアントに通知します。
+notifications/resources/updated (ResourceChangedNotification 12): 購読中のリソースのコンテンツが変更された場合、サーバーはクライアントに通知します。params: { uri: string }。
+
+
+リソース購読 (resources/subscribe, resources/unsubscribe 12):
+
+resources/subscribe: クライアントは特定のリソースURIの更新を要求します。params: { uri: string }。
+resources/unsubscribe: クライアントはリソースURIの更新受信を停止します。params: { uri: string }。
+
+
+リソースの「アプリケーション制御」という性質 5 は、サーバーがデータを明確に公開する一方で、クライアント/LLMが最終的にその使用方法を決定することを意味します。これは、LLMがアクションの実行を決定する「モデル制御」のツールとは対照的です。この区別はサーバー設計にとって重要です。リソースは情報提供に関するものであり、ツールはアクション実行に関するものです。購読メカニズム (resources/subscribe, notifications/resources/updated) は、動的なデータソース（例：ログファイル、ライブシステムデータ 23）にとって強力であり、LLMが一定のポーリングなしにリアルタイム情報で動作できるようにします。リソースのCRUD操作に関して、resources/read（読み取り）および更新通知/購読（更新）は明確に定義されていますが、提示された情報 23 によると、MCP仕様自体にはリソースプリミティブの一部として明示的なresources/createやresources/deleteメソッドは提供されていないようです。サーバー側データの操作（作成/削除/変更）は、通常ツールを介して処理されます。D. プロンプトインターフェース (prompts)
+目的: サーバーが再利用可能なプロンプトテンプレートとワークフローを定義・公開し、クライアントが特定のタスクのためにユーザーやLLMを誘導するのに使用できるようにします 2。プロンプトは「ユーザー制御」です 5。
+prompts/list (ListPromptsRequest, ListPromptsResult 12):
+
+目的: 利用可能なプロンプトテンプレートを発見します。
+リクエスト: method: "prompts/list"。ページネーションのためにparams: { cursor?: string }を含む場合があります 19。
+レスポンス: result: { prompts: Prompt, nextCursor?: string }。
+プロンプト定義 (Prompt 12):
+
+name: string (一意な識別子)
+description?: string
+arguments?: PromptArgument (プロンプトテンプレートが受け入れる引数のリスト)
+表4：Promptオブジェクト定義
+
+
+
+
+フィールド名 (Field Name)型 (Type)必須 (Required)説明 (Description)namestringYesプロンプトの一意な識別子。descriptionstring (optional)Noプロンプトに関する人間可読な説明。argumentsPromptArgument (optional)Noプロンプトが受け入れる引数のリスト。各PromptArgumentはname (string, required), description (string, optional), required (boolean, optional) を持ちます。
+prompts/get (GetPromptRequest, GetPromptResult 12):
+
+目的: 特定のプロンプトのコンテンツを取得します。引数が提供されていれば展開されます。
+リクエスト: method: "prompts/get", params: { name: string, arguments?: object, progressToken?: ProgressToken }。argumentsはプロンプトの定義済み引数に値を提供するオブジェクトです。
+レスポンス: result: { description?: string, messages: Message }。
+
+messages: Messageオブジェクトの配列。LLMに送信される実際のプロンプトコンテンツを形成します。
+
+
+
+
+プロンプト引数定義 (PromptArgument 12):
+
+name: string
+description?: string
+required?: boolean
+
+
+メッセージ定義 (Message 12):
+
+role: string ("user" または "assistant")
+content: Content オブジェクト (TextContent, ImageContent, AudioContent, ResourceContentのいずれか)
+
+
+コンテンツタイプ (TextContent, ImageContent, AudioContent, ResourceContent 12):
+
+TextContent: { type: "text", text: string }
+ImageContent: { type: "image", data: string (base64), mimeType: string }
+AudioContent: { type: "audio", data: string (base64), mimeType: string }
+ResourceContent: { type: "resource", resource: { uri: string, mimeType?: string, text?: string, blob?: string } } (リソースデータを直接埋め込む)
+
+
+プロンプトリスト変更ノーティフィケーション (notifications/prompts/list_changed 12): サーバーがlistChanged能力をサポートし、利用可能なプロンプトが変更された場合にサーバーから送信されます。
+MCPにおけるプロンプトは単なる静的テキストではなく、引数を受け入れ、他のリソースを含む様々なコンテンツタイプを埋め込むことができる構造化されたテンプレートです 19。これにより、サーバーは複雑で事前定義されたインタラクションを提供できます。プロンプトの「ユーザー制御」という性質 5 は、クライアントUI（例：スラッシュコマンドやメニューオプション）でしばしば表面化することを意味し、サーバー開発者はこのユーザー発見可能性を念頭に置いてプロンプト名と説明を設計すべきです。IV. MCPサーバーのための必須API設計パターンとユーティリティA. エラー処理と報告MCPにおけるエラー報告は二重の性質を持ちます。
+プロトコルレベルのエラー: 標準的なJSON-RPCエラーコード（例: -32600 Invalid Request, -32601 Method not found, -32602 Invalid params, -32603 Internal error 19）が使用されます。これらはMCPメッセージ自体の問題や基本的なサーバーの問題に対して用いられます。schema.ts 12 のErrorObject型は、code (number)、message (string)、およびオプションのdata (any) を定義します。
+ツール/リソース固有のエラー: ツール実行中やリソース読み取り中に発生するエラーは、tools/callまたはresources/readレスポンスのresultオブジェクト内で報告されるべきであり、通常はisError: trueフラグとErrorObjectを含むerrorフィールドを使用します 12。これにより、LLM/エージェントがこれらのアプリケーションレベルのエラーを認識し、潜在的に処理できるようになります。
+表5：一般的なMCP JSON-RPCエラーコードとアプリケーションレベルエラー表示コード (Code)標準メッセージ (Standard Message)一般的なMCPコンテキスト/原因 (Typical MCP Context/Cause)MCP isError フラグ (ツール/リソース結果用)-32700Parse errorサーバーが受信したJSONが無効です。N/A-32600Invalid Request送信されたJSONが有効なリクエストオブジェクトではありません。N/A-32601Method not found指定されたメソッドが存在しないか、利用できません。N/A-32602Invalid paramsメソッドパラメータが無効です（例：型が違う、必須パラメータがない）。N/A-32603Internal errorサーバー内部でエラーが発生しました。N/A(N/A)(アプリケーション定義)ツール実行中またはリソース読み取り中にアプリケーション固有のエラーが発生しました（例：ファイルが見つからない、外部APIエラー）。trueベストプラクティス: 明確で実行可能なエラーメッセージを提供します。クライアントに公開されるエラーメッセージに機密性の高い内部詳細を漏洩させないようにします 8。デバッグのためにサーバー側で詳細なエラーをログに記録します。プロトコルエラーとインバンドのツール/リソースエラーの区別は極めて重要です。プロトコルエラーは通常、MCP通信自体が失敗したことを意味します。インバンドエラーは、通信は正常だったが要求されたアクションが失敗したことを意味します。サーバーは、LLMがそれらを認識できるように、アプリケーションレベルの障害に対してCallToolResultまたはReadResourceResult内でisErrorフラグを使用しなければなりません 21。一貫性があり情報量の多いエラーメッセージは、インバンドエラーであっても、LLMの理解と人間のデバッグの両方にとって不可欠です 26。「エラー：失敗しました」は役に立ちませんが、「エラー：サービスXのAPIレート制限を超過しました」は実行可能です。B. 非同期および長時間実行オペレーションの管理
+進捗追跡 (notifications/progress, ProgressNotification 12):
+
+目的: 時間のかかる操作について、サーバーはクライアントに進捗更新を送信できます。
+メカニズム: 初期リクエスト（例：tools/call, resources/read）はオプションのprogressTokenを含むことができます。サーバーはその後、このトークン、progress（現在の進捗値）、total?（既知の場合の総作業量）、およびオプションのmessageを含むnotifications/progressメッセージを送信します。
+
+
+リクエストキャンセル (notifications/cancelled, CancelledNotification 12):
+
+目的: クライアントまたはサーバーが、以前に発行されたリクエストをキャンセルすべきであることを示すことを許可します。
+メカニズム: キャンセルするリクエストのrequestIdとオプションのreasonを含むnotifications/cancelledメッセージが送信されます。受信側は処理を中止すべきです（SHOULD）。注意：クライアントはinitializeをキャンセルしてはなりません（MUST NOT）12。
+
+
+非同期APIパターン（一般）: MCP自体はリクエスト/レスポンスとノーティフィケーションを使用しますが、サーバー上の長時間実行タスクは、MCPインタラクションが単なるトリガーである場合、内部的にポーリングやコールバックのようなパターンを使用する可能性があります。MCPノーティフィケーションはMCPクライアントへのフィードバックメカニズムとして機能します 22。
+progressTokenとnotifications/progressは、ツール/リソースの読み取りが遅い場合にクライアントでの良好なUXに不可欠です。これらがないと、クライアント（およびユーザー）は何が起こっているのか分からなくなります。キャンセルは「SHOULD」であり 12、「MUST」の保証ではありません。サーバー実装者は作業を停止するために最善を尽くすべきですが、クライアントは遅延により操作が既に完了した後にキャンセル通知が到着する可能性があることを認識する必要があります。32では、長時間実行コマンドに対するサーバー側のキャンセル機能の欠如が問題を引き起こした実際のシナリオが示されています。C. ロギング (notifications/log, LogNotification 2)
+目的: サーバーがデバッグや情報提供の目的でクライアントにログメッセージを送信できるようにします。
+メカニズム: サーバーはparams: { type: LogLevel, message: string }を含むnotifications/logを送信します。LogLevelは "error", "warning", "info", "debug" のいずれかです。
+MCPを介したサーバーからクライアントへのロギングは、主にクライアント側のデバッグやクライアントアプリケーションのユーザーへの運用透明性の提供を目的としています。サーバー自身の運用監視や監査のための堅牢なサーバー側ロギングの代替にはなりません。D. サーバー設定とバージョニング
+MCP仕様バージョニング: プロトコル自体は日付によってバージョン管理されます（例："2025-03-26"）2。バージョンネゴシエーションはinitialize中に行われます。サーバーとクライアントは、最新の「Current」または「Final」仕様バージョンとの互換性を目指すべきです。
+API進化のベストプラクティス: MCPは標準を提供しますが、個々のサーバーはツール/リソースを進化させる可能性があります。ベストプラクティスには以下が含まれます。
+
+可能な限り後方互換性を維持する。
+破壊的変更が導入された場合、ツールを明確にバージョン管理する（ツール名にバージョンを含めるか、パラメータとして含めるなど）。MCP自体はツールのバージョン管理を明示的に定義していないため、これはサーバー実装者に委ねられます。
+利用可能な更新をクライアントに通知するためにlistChangedノーティフィケーションを使用する。
+
+
+MCP仕様の日付ベースのバージョニング 2 はプロトコルレベルの互換性に焦点を当てています。ツールを公開する個々のサーバーは、依然として自社の特定のツールがどのように進化するかについての戦略が必要です。ツールのパラメータが非後方互換的な方法で変更された場合、サーバーはこの問題を管理する必要があり、おそらく新しいツール名を導入する（例：my_tool_v2）か、initializeのinstructionsフィールドやドキュメントを通じてクライアントの期待を慎重に管理する必要があります。初期化中に交換されるserverInfo (name, version) とclientInfo 12 は、両当事者によってログに記録できます。このメタデータは、特定のクライアントバージョンとサーバーバージョン間の相互運用性の問題をデバッグする上で非常に貴重です。V. MCPサーバーAPI設計におけるセキュリティ考慮事項A. ユーザーの同意と制御の確保主にホスト/クライアントの責任ですが、サーバーは、クライアントが操作、特に副作用のある操作（ツール呼び出し）や機密データへのアクセス（リソース）に対してユーザーの同意を求めることを期待して設計されるべきです 2。ツールの説明は、潜在的なアクションについて明確でなければなりません。サーバーは、ツールやリソースのdescriptionフィールドを非常に明確かつ曖昧さなく提供することで、ユーザーの同意を支援できます。ツールの説明が「ユーザーデータを変更します」とあれば、クライアントはこれをユーザーに明確に提示して承認を求めることができます。B. データプライバシー：リソースおよびツールインタラクションにおける機密情報の保護サーバーは必要以上のデータを公開してはなりません。機密情報を扱う場合は、編集メカニズムや特定のスコープ/権限の要求を検討します（MCP自体はスコープシステムを定義していませんが、これはアプリケーション層の上にあるか、リモートサーバーの場合はトランスポート層の認証によって管理されます）2。リモートサーバーの場合、基盤となるHTTPトランスポートの認証/認可（例：20で議論されているOAuth 2.0）は、MCPサーバー自体へのアクセス、およびそれが公開するデータ/ツールへのアクセスを制御するために不可欠です。C. ツールの安全性：安全な実行と入力検証ツールは任意のコード実行パスを表します 2。サーバーは、インジェクション攻撃や意図しない動作を防ぐために、ツールへのすべての入力を厳密に検証およびサニタイズしなければなりません（MUST）21。ツール動作の説明は、信頼できるサーバーから取得されない限り、信頼できないものとして扱われるべきです 2。ツールが実行する操作には最小権限を実装します。ツールのparameters JSONスキーマ 12 は、LLMのガイダンスのためだけでなく、サーバー上の入力検証の第一線でもあります。サーバーは、実行前に受信したツール引数をこのスキーマに対して検証すべきです。D. プロンプトインジェクション脆弱性への対応ツールに渡されるデータやリソースによって返されるデータが、信頼できない外部入力から供給された場合、悪意のあるプロンプトを含む可能性があることに注意してください。主にLLM/クライアント側の懸念事項ですが、サーバーは、それらの出力が信頼できないソースの影響を受ける可能性がある場合、リソースコンテンツやツール出力から直接実行可能コードや機密性の高いシステムコマンドをサニタイズせずに構築することを避けるべきです 43。サーバーのツールが信頼できない外部ソース（例：公開ウェブページ）からデータを取得し、そのデータを使用してシステムコマンドや別のプロンプトを構築する場合、間接的なプロンプトインジェクションに対して脆弱になる可能性があります。E. 認証および認可メカニズムMCP自体はトランスポートに対する特定の認証メカニズムを指定していませんが、HTTPのようなリモートトランスポートの場合、MCPエンドポイントを保護するために標準的なウェブセキュリティ慣行（TLS、OAuth 2.0、APIキー）を採用すべきです 8。認可（特定のクライアント/ユーザーがどのツール/リソースにアクセスできるか）は、通常、認証されたIDに基づいてサーバーによって処理されます。Stdioサーバーの場合、認証はしばしば暗黙的です（サーバーを実行するプロセスが特定のOSレベルの権限を持っています）。リモートサーバーの場合、サーバーリソースとユーザーデータを保護するために堅牢な認証（例：42に基づくOAuth 2.0）が不可欠です。VI. 結論と推奨事項堅牢で安全、かつ相互運用可能なMCPサーバーを開発するための重要なAPI設計原則は、JSON-RPC 2.0形式およびMCP定義メソッド/スキーマ（特にschema.ts）への厳格な準拠、包括的な入力検証、公開されるすべての機能（ツール、リソース、プロンプト）に対する明確かつ詳細な説明、堅牢なエラー報告、そして各層におけるセキュリティへの慎重な配慮です。主要な情報源として、公式のMCP仕様 2 および関連するSDKドキュメント 7 を参照することの重要性を強調します。MCPの成功は、仕様の質と、それを遵守するサーバー/クライアント実装者の熱意の両方にかかっています。逸脱や不完全な実装は、相互運用性という目標を損なうことになります。MCPエコシステムはまだ進化の途上にあり 3、初期の採用者と実装者は、フィードバックの提供、リファレンス実装への貢献、ベストプラクティスの確立を通じて、その未来を形作る上で重要な役割を果たします 6。AIエージェントインタラクションの標準としてのMCPの将来展望は明るく、相互運用可能なツールとサービスの豊かなエコシステムを育成する可能性を秘めていますが、プロトコルの改良とベストプラクティスの共有におけるコミュニティの継続的な関与が必要です。
