@@ -15,14 +15,14 @@ Docker Compose形式（`docker compose`）を用いて、以下の4つのサー�
 ```mermaid
 flowchart LR
   subgraph Compose Stack
-    Crawler[Crawler\n(Scrapy)]
-    Elasticsearch[Elasticsearch\n8.18.1]
-    MCPServer[MCP Server\n(FastAPI)]
+    Crawler["Crawler\n(Scrapy)"]
+    Elasticsearch["Elasticsearch\n8.18.1"]
+    MCPServer["MCP Server\n(FastAPI)"]
   end
 
   Crawler -->|収集データ| Elasticsearch
   Elasticsearch -->|検索クエリ| MCPServer
-  MCPServer -->|ドキュメント取得| Resource[/docs/{id}/\nFastAPI/Resource/]
+  MCPServer -->|ドキュメント取得| Resource["/docs/{id}/\nFastAPI/Resource/"]
 ```
 
 ## 技術スタック
