@@ -19,15 +19,17 @@ class ElasticsearchClient:
         クライアントを初期化します。
         :param host: ElasticsearchのホストURLまたはホスト名（例: localhost:9200）
         """
-        # 環境変数または引数からホストを取得（デフォルト: localhost:9200）
         self.host = host or os.getenv("ELASTICSEARCH_HOST", "localhost:9200")
-        # スキーム（http://またはhttps://）が含まれていない場合はhttpを付与
-        if not self.host.startswith(("http://", "https://")):
-            self.base_url = f"http://{self.host}"
-        else:
-            self.base_url = self.host
-        # セッションを生成して接続の再利用を可能にする
+        self.base_url = self._normalize_host_url(self.host)
         self.session = requests.Session()
+
+    def _normalize_host_url(self, host: str) -> str:
+        """
+        ホストURLを正規化し、スキーム（http://またはhttps://）が付与されていない場合はhttp://を付与します。
+        """
+        if not host.startswith(("http://", "https://")):
+            return f"http://{host}"
+        return host
 
     def search(self, body: dict, index: str):
         """

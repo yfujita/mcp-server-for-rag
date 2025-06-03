@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from .elasticsearch_client import ElasticsearchClient, NotFoundError
 
@@ -9,6 +9,18 @@ class ToolParameters(BaseModel):
     type: str = "object"
     properties: Dict[str, Any] = Field(default_factory=dict)
     required: List[str] = Field(default_factory=list)
+
+class SearchToolParams(BaseModel):
+    query: str
+    index: str
+    cursor: Optional[str] = None
+
+class GetDocumentByIdToolParams(BaseModel):
+    document_id: str
+    index: str
+
+class ListElasticsearchIndicesToolParams(BaseModel):
+    pass # No parameters for this tool
 
 class Tool(BaseModel):
     name: str
@@ -79,26 +91,25 @@ class IndexListResult(BaseModel):
     indices: List[IndexInfo]
 
 
-def search_tool(es_client: ElasticsearchClient, query: str, index: str, cursor: Optional[str] = None) -> SearchResults:
+def search_tool(es_client: ElasticsearchClient, params: SearchToolParams) -> SearchResults:
     """
     タイトルまたはコンテンツにキーワードを含むドキュメントを検索し、
     {id, title} のリストを返します。
     指定されたindexを検索します。
     This function implements the 'search' tool logic.
     """
-    size = 10 # ページングサイズを10に固定
+    size = 10
     from_ = 0
-    if cursor:
+    if params.cursor:
         try:
-            from_ = int(cursor)
+            from_ = int(params.cursor)
         except ValueError:
-            # 無効なカーソル値の場合は0から開始
             from_ = 0
 
     body = {
         "query": {
             "multi_match": {
-                "query": query,
+                "query": params.query,
                 "fields": [
                     "title",
                     "content",
@@ -123,8 +134,7 @@ def search_tool(es_client: ElasticsearchClient, query: str, index: str, cursor: 
         "from": from_,
         "size": size
     }
-    # es_client.searchはハイライト情報を含む完全なElasticsearchヒットを返すように変更されることを想定
-    search_response = es_client.search(body, index)
+    search_response = es_client.search(body, params.index)
     search_hits = search_response.get("hits", {}).get("hits", [])
     total_hits = search_response.get("hits", {}).get("total", {}).get("value", 0)
 
@@ -132,21 +142,7 @@ def search_tool(es_client: ElasticsearchClient, query: str, index: str, cursor: 
     for hit in search_hits:
         doc_id = hit["_id"]
         doc_title = hit["_source"].get("title")
-        
-        # 優先順位に従ってハイライトを取得
-        highlight = None
-        if "highlight" in hit:
-            if "content_ja" in hit["highlight"]:
-                highlight = {"content": hit["highlight"]["content_ja"]}
-            elif "content_ngram" in hit["highlight"]:
-                highlight = {"content": hit["highlight"]["content_ngram"]}
-            elif "content" in hit["highlight"]:
-                highlight = {"content": hit["highlight"]["content"]}
-            else:
-                highlight = {}
-            
-            if "title" in hit["highlight"]:
-                highlight["title"] = hit["highlight"]["title"]
+        highlight = _extract_highlight(hit)
 
         if doc_id and doc_title:
             items.append(SearchResultItem(id=doc_id, title=doc_title, highlight=highlight))
@@ -158,26 +154,47 @@ def search_tool(es_client: ElasticsearchClient, query: str, index: str, cursor: 
     
     return SearchResults(items=items, next_cursor=next_cursor)
 
-def get_document_by_id_tool(es_client: ElasticsearchClient, document_id: str, index: str) -> DocumentContent:
+# _extract_highlight ヘルパー関数
+def _extract_highlight(hit: Dict[str, Any]) -> Optional[Dict[str, List[str]]]:
+    """
+    Elasticsearchのヒット結果からハイライト情報を抽出します。
+    優先順位: content_ja -> content_ngram -> content
+    """
+    highlight = None
+    if "highlight" in hit:
+        highlight_data = hit["highlight"]
+        highlight = {}
+        if "content_ja" in highlight_data:
+            highlight["content"] = highlight_data["content_ja"]
+        elif "content_ngram" in highlight_data:
+            highlight["content"] = highlight_data["content_ngram"]
+        elif "content" in highlight_data:
+            highlight["content"] = highlight_data["content"]
+        
+        if "title" in highlight_data:
+            highlight["title"] = highlight_data["title"]
+    return highlight
+
+def get_document_by_id_tool(es_client: ElasticsearchClient, params: GetDocumentByIdToolParams) -> DocumentContent:
     """
     ドキュメントIDを指定して全文を取得します。
     This function implements the 'get_document_by_id' tool logic.
     """
     try:
-        document = es_client.get(document_id, index)
+        document = es_client.get(params.document_id, params.index)
         content = document.get("content")
         title = document.get("title")
         if content is None:
-            raise ValueError(f"Document with id {document_id} has no content")
+            raise ValueError(f"Document with id {params.document_id} has no content")
         if title is None:
-            raise ValueError(f"Document with id {document_id} has no title")
-        return DocumentContent(id=document_id, title=title, content=content)
+            raise ValueError(f"Document with id {params.document_id} has no title")
+        return DocumentContent(id=params.document_id, title=title, content=content)
     except NotFoundError:
-        raise NotFoundError(f"Document with id {document_id} not found in index {index}")
+        raise NotFoundError(f"Document with id {params.document_id} not found in index {params.index}")
     except Exception as e:
-        raise ValueError(f"Error retrieving document {document_id}: {str(e)}")
+        raise ValueError(f"Error retrieving document {params.document_id}: {str(e)}")
 
-def list_elasticsearch_indices_tool(es_client: ElasticsearchClient) -> IndexListResult:
+def list_elasticsearch_indices_tool(es_client: ElasticsearchClient, params: ListElasticsearchIndicesToolParams) -> IndexListResult:
     """
     Elasticsearchの全インデックスのリストと説明を返します。
     This function implements the 'list_elasticsearch_indices' tool logic.
@@ -218,23 +235,22 @@ def handle_tool_call(es_client: ElasticsearchClient, tool_name: str, arguments: 
     ツール呼び出しを処理し、結果を返します。
     Handles tool calls and returns the result.
     """
-    if tool_name == "search":
-        if not isinstance(arguments, dict) or "query" not in arguments or "index" not in arguments:
-            raise ValueError("Invalid arguments for search tool. Expected 'query' and 'index'.")
-        query = arguments.get("query")
-        index = arguments.get("index")
-        cursor = arguments.get("cursor")
-        return search_tool(es_client, query, index, cursor).model_dump() # Pydanticモデルを辞書に変換して返す
-    elif tool_name == "get_document_by_id":
-        if not isinstance(arguments, dict) or "document_id" not in arguments or "index" not in arguments:
-            raise ValueError("Invalid arguments for get_document_by_id tool. Expected 'document_id' and 'index'.")
-        document_id = arguments.get("document_id")
-        index = arguments.get("index")
-        return get_document_by_id_tool(es_client, document_id, index).model_dump()
-    elif tool_name == "list_elasticsearch_indices":
-        return list_elasticsearch_indices_tool(es_client).model_dump()
-    else:
-        raise ValueError(f"Tool '{tool_name}' not found")
+    try:
+        if tool_name == "search":
+            params = SearchToolParams.model_validate(arguments)
+            return search_tool(es_client, params).model_dump()
+        elif tool_name == "get_document_by_id":
+            params = GetDocumentByIdToolParams.model_validate(arguments)
+            return get_document_by_id_tool(es_client, params).model_dump()
+        elif tool_name == "list_elasticsearch_indices":
+            params = ListElasticsearchIndicesToolParams.model_validate(arguments)
+            return list_elasticsearch_indices_tool(es_client, params).model_dump()
+        else:
+            raise ValueError(f"Tool '{tool_name}' not found")
+    except ValidationError as e:
+        raise ValueError(f"Invalid arguments for tool '{tool_name}': {e.errors()}")
+    except Exception as e:
+        raise ValueError(f"Error executing tool '{tool_name}': {str(e)}")
 
 def handle_tool_list() -> ToolListResult:
     """

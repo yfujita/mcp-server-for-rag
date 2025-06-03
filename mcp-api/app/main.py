@@ -1,20 +1,8 @@
-import os
 from fastapi import FastAPI, Request
-from dotenv import load_dotenv
 
-from .elasticsearch_client import ElasticsearchClient
+from .config import config
 from .rpc_handler import handle_mcp_request
 
-# .envファイルから環境変数を読み込む
-load_dotenv()
-
-# Elasticsearchのホストとインデックスを環境変数から取得（デフォルト値: localhost:9200, documents）
-ES_URL = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
-
-# ElasticsearchClientのインスタンスを生成
-es = ElasticsearchClient(host=ES_URL)
-
-# FastAPIアプリケーションを初期化
 app = FastAPI(
     title="MCP API",
     description="Retrieval API for matching documents",
@@ -29,11 +17,10 @@ async def health_check():
     """
     return {"status": "ok"}
 
-# JSON-RPCエンドポイント
 @app.post("/mcp")
 async def mcp_rpc_endpoint(request: Request):
     """
     MCPツールとリソースのためのJSON-RPC 2.0リクエストを処理します。
     Handles incoming JSON-RPC 2.0 requests for MCP tools and resources.
     """
-    return await handle_mcp_request(request, es, app.version)
+    return await handle_mcp_request(request, config.ELASTICSEARCH_CLIENT, app.version)
