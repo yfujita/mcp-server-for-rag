@@ -7,7 +7,7 @@ RAG（Retrieval-Augmented Generation）向けの検索マイクロサービス�
   - FastAPIベースのAPIサーバー。検索キーワードにマッチするドキュメントのIDとタイトルのリストを返すツール（tool）。
   - ドキュメントIDを指定して、対応するドキュメントの本文を返すリソース（resource）。
 - **Crawler**  
-  Scrapyベースのクローラー。Webページをクロールしてドキュメントを収集し、Indexerに送信。
+  Scrapyベースのクローラー。Webページをクロールしてドキュメントを収集し、Elasticsearchに送信。
 
 ## アーキテクチャ
 Docker Compose形式（`docker compose`）を用いて、以下の4つのサービスを連携させて動作します。
