@@ -1,0 +1,161 @@
+# Model Context Protocol (MCP) サーバー開発クイックスタートガイド
+
+## 概要
+
+このガイドでは、Claude for Desktopなどのクライアントで使用するMCPサーバーの構築方法を解説します。天気情報を取得するシンプルなMCPサーバーを作成し、Claude for Desktopに接続する方法を学びます。
+
+## MCPの主要概念
+
+MCPサーバーは以下の3つの主要な機能を提供できます：
+
+- **Resources**: クライアントが読み取れるファイル形式のデータ（APIレスポンスやファイル内容など）
+- **Tools**: LLMが呼び出せる関数（ユーザーの承認が必要）
+- **Prompts**: 特定のタスクを達成するためのプリ作成されたテンプレート
+
+このチュートリアルでは主にToolsに焦点を当てます。
+
+## 構築するもの
+
+天気予報と気象警報を取得する2つのツールを持つサーバーを構築します：
+- `get-alerts`：気象警報の取得
+- `get-forecast`：天気予報の取得
+
+## 対応言語とSDK
+
+以下の言語でサーバーを構築できます：
+
+### Python
+- **前提知識**: Python、Claude等のLLM
+- **システム要件**: Python 3.10以上、Python MCP SDK 1.2.0以上
+
+### TypeScript
+- **前提知識**: TypeScript、Claude等のLLM
+- **システム要件**: Node.js 16以上
+
+### Java (Spring Boot)
+- **前提知識**: Java、Spring Boot
+- **システム要件**: Java 17以上、Spring Boot 3.3.x以上
+
+### Kotlin
+- **前提知識**: Kotlin、Claude等のLLM
+- **システム要件**: Java 17以上
+
+### C#
+- **前提知識**: C#、.NET
+- **システム要件**: .NET 8 SDK以上
+
+## Pythonでの実装例
+
+### 環境セットアップ
+
+```bash
+# uvのインストール
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# プロジェクトの作成
+mkdir weather-server
+cd weather-server
+uv init --python 3.11
+uv add fastmcp
+```
+
+### サーバーの実装
+
+```python
+from fastmcp import FastMCP
+import httpx
+from typing import Dict, Any
+
+# FastMCPインスタンスの作成
+mcp = FastMCP("Weather Server")
+
+# ヘルパー関数
+def get_forecast(latitude: float, longitude: float) -> Dict[str, Any]:
+    """天気予報を取得"""
+    # National Weather Service APIを使用した実装
+    pass
+
+def get_alerts(state: str) -> Dict[str, Any]:
+    """気象警報を取得"""
+    # National Weather Service APIを使用した実装
+    pass
+
+# ツールの定義
+@mcp.tool()
+def get_weather_forecast(latitude: float, longitude: float) -> str:
+    """指定された座標の天気予報を取得します"""
+    return get_forecast(latitude, longitude)
+
+@mcp.tool()
+def get_weather_alerts(state: str) -> str:
+    """指定された州の気象警報を取得します"""
+    return get_alerts(state)
+
+# サーバーの実行
+if __name__ == "__main__":
+    mcp.run()
+```
+
+## Claude for Desktopでのテスト
+
+### 設定ファイルの編集
+
+Claude for Desktopの設定ファイルを編集します：
+
+**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "weather": {
+      "command": "uv",
+      "args": ["--directory", "/絶対パス/weather", "run", "weather.py"]
+    }
+  }
+}
+```
+
+### 使用方法
+
+1. 設定ファイルを保存してClaude for Desktopを再起動
+2. ハンマーアイコンでツールが表示されることを確認
+3. 以下のような質問でテスト：
+   - "サクラメントの天気は？"
+   - "テキサス州の気象警報は？"
+
+## 動作の仕組み
+
+質問をすると以下の流れで処理されます：
+
+1. クライアントが質問をClaudeに送信
+2. Claudeが利用可能なツールを分析し、使用するツールを決定
+3. クライアントがMCPサーバー経由で選択されたツールを実行
+4. 結果がClaudeに送り返される
+5. Claudeが自然言語の回答を生成
+6. 回答が表示される
+
+## トラブルシューティング
+
+- サーバーが認識されない場合は、絶対パスが正しいか確認
+- 設定ファイルのJSON形式が正しいか確認
+- Claude for Desktopを再起動
+- ターミナルでサーバーが正常に動作するか確認
+
+## 次のステップ
+
+- [クライアントの構築](/quickstart/client)
+- [公式MCPサーバーの例](/examples)
+- [デバッグガイド](/docs/tools/debugging)
+- [LLMを使ったMCP開発](/docs/building-with-llms)
+
+## 注意事項
+
+- Claude for DesktopはLinuxでは利用できません
+- US National Weather Serviceを使用するため、米国の場所のみクエリが機能します
+- サーバーが適切に設定されていないとMCP UI要素は表示されません
+
+## リソース
+
+- [完全なコード例（Python）](https://github.com/modelcontextprotocol/quickstart-resources/tree/main/weather-server-python)
+- [完全なコード例（TypeScript）](https://github.com/modelcontextprotocol/quickstart-resources/tree/main/weather-server-typescript)
+- [Java Spring Boot例](https://github.com/spring-projects/spring-ai-examples/tree/main/model-context-protocol/weather/starter-stdio-server)

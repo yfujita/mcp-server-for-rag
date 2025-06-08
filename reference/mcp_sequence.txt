@@ -1,0 +1,90 @@
+直接回答
+主なポイント:
+HTTP with SSEとStreamable HTTPは、MCPクライアントがサーバーに接続する際の異なる方法です。
+HTTP with SSEでは、クライアントがGET /mcpでSSE接続を確立し、POST /messagesでリクエストを送ります。
+Streamable HTTPでは、単一の/mcpエンドポイントを使用し、POSTでリクエストを送り、GETで通知用のSSEストリームを確立できます。
+研究はStreamable HTTPが新しい標準であることを示唆していますが、両方の方法が使用可能です。
+接続シーケンスの概要:
+HTTP with SSEの場合:
+クライアントはGET /mcpでSSE接続を確立し、サーバーからのメッセージ（応答や通知）を受け取ります。
+クライアントはPOST /messagesでJSON-RPCリクエストを送信します。
+サーバーはSSE接続を通じて応答や通知を送ります。
+Streamable HTTPの場合:
+クライアントはPOST /mcpでInitializeRequestを送り、接続を初期化します。
+サーバーは通常JSONで応答します。
+クライアントはGET /mcpで通知用の永続的なSSEストリームを確立できます（オプション）。
+クライアントはPOST /mcpでリクエストを送り、サーバーはJSON応答またはSSEストリームで応答します。
+詳細な説明:
+HTTP with SSEは古い方法で、2つのエンドポイント（/mcpと/messages）を使用します。一方、Streamable HTTPは新しい標準で、単一の/mcpエンドポイントで全ての通信を処理します。Streamable HTTPはより柔軟で、応答をJSONまたはSSEストリームで返すことができます。どちらの方法もセキュリティ（例：Originヘッダーの検証）やセッション管理を考慮する必要があります。
+調査ノート
+この調査ノートでは、MCP（Model Context Protocol）クライアントがMCPサーバーに接続する際のシーケンス、特にHTTP with SSEとStreamable HTTPの2つの方法について詳細に調査しました。以下に、両方の方法のシーケンスと関連する詳細を網羅的に説明します。
+背景とコンテキスト
+MCPは、AIモデルが外部データソースやツールと安全に接続するためのオープン標準プロトコルです。Anthropicによって2024年11月に導入され、現在では多くの企業や開発者が採用しています。クライアント（例：clineのようなMCPクライアント）は、サーバーと通信するためにHTTPベースのトランスポートを使用します。この調査では、HTTP with SSE（Server-Sent Events）とStreamable HTTPの2つのトランスポートに焦点を当てます。
+調査の過程で、MCPの公式仕様書や関連ドキュメント、開発者ブログ、GitHubリポジトリなどを参照しました。これにより、両方の方法の詳細なシーケンスと違いを明確にすることができました。
+HTTP with SSEの詳細
+HTTP with SSEは、MCPの初期のトランスポート方法であり、クライアントとサーバー間の通信に2つのエンドポイントを使用します。
+GET /mcp: クライアントはSSE接続を確立するためにGETリクエストを/mcpに送信します。この接続を通じて、サーバーは応答や通知をクライアントにプッシュできます。
+POST /messages: クライアントはJSON-RPCリクエストを送信するためにPOSTリクエストを/messagesに送信します。
+シーケンスの詳細:
+クライアントはGET /mcpを送信し、適切なヘッダー（例：Accept: text/event-stream）を付けてSSE接続を確立します。
+サーバーはSSEストリームで応答し、以降の通信でメッセージ（応答や通知）を送信します。
+クライアントは各リクエストに対してPOST /messagesを送信し、JSON-RPCメッセージをボディに含めます。
+サーバーはリクエストを処理し、応答や通知をSSE接続を通じてクライアントに送信します。
+特徴:
+サーバーからクライアントへの全ての通信はSSE接続を通じて行われます。
+クライアントからサーバーへのリクエストは/messagesエンドポイントを介します。
+この方法は比較的単純ですが、2つのエンドポイントを管理する必要があるため、Streamable HTTPほど柔軟ではありません。
+セキュリティ面では、DNSリバインド攻撃を防ぐためにOriginヘッダーの検証やローカル環境でのlocalhost（127.0.0.1）へのバインドが推奨されます（Model Context Protocol Transports）。
+Streamable HTTPの詳細
+Streamable HTTPは、HTTP with SSEに代わる新しい標準トランスポートで、2025年3月26日の仕様書で導入されました（Model Context Protocol Specification (2025-03-26)）。この方法では、単一の/mcpエンドポイントを使用して全ての通信を処理し、POSTとGETの両方をサポートします。
+シーケンスの詳細:
+接続の初期化:
+クライアントはPOST /mcpを送信し、InitializeRequestメッセージを含めます。
+サーバーは通常、Content-Type: application/jsonでInitializeResponseを返します。この応答にはセッションID（Mcp-Session-Idヘッダー内）や他の初期化データが含まれる場合があります。
+永続的なSSEストリームの確立（オプション）:
+クライアントはGET /mcpを送信し、Accept: text/event-streamヘッダーを含めて通知用の永続的なSSEストリームを確立できます。
+サーバーはContent-Type: text/event-streamで応答し、通知やバッチリクエストを送信できます。
+リクエストの送信:
+クライアントは各JSON-RPCリクエストに対してPOST /mcpを送信し、ボディにリクエストデータを入れます。セッションIDがある場合はMcp-Session-Idヘッダーを含めます。
+サーバーの応答:
+サーバーは各POSTリクエストに対して2つの方法で応答できます：
+非ストリーミング応答: 200 OKとContent-Type: application/jsonで単一のJSON-RPC応答オブジェクトを返します。
+ストリーミング応答: 200 OKとContent-Type: text/event-streamで応答し、ボディをSSEストリームとして送信します（例：長時間のテキスト生成など）。
+ストリーミング応答の場合、クライアントはPOST応答を通じて複数のSSEイベントを受け取ります。
+通知の送信:
+クライアントがステップ2でSSEストリームを確立している場合、サーバーはこのストリームを通じて通知や他のメッセージ（リクエストに関連しないもの）を送信できます。
+セキュリティと追加の考慮事項:
+サーバーは全ての接続でOriginヘッダーを検証し、DNSリバインド攻撃を防ぐ必要があります。
+ローカル環境ではlocalhost（127.0.0.1）にバインドすることが推奨されます。
+セッション管理はMcp-Session-Idヘッダーを使用し、クライアントは初期化後にこのIDを含める必要があります。サーバーはセッションを終了する場合、404 Not Foundで応答します。
+比較表:
+側面
+HTTP with SSE
+Streamable HTTP
+エンドポイント
+- GET /mcp（SSE）
+- POST /messages（リクエスト）
+- 単一の/mcpエンドポイント
+- POST（リクエスト/応答）
+- GET（オプションのSSEストリーム）
+SSEの使用
+- 全てのサーバー→クライアント通信に使用
+- POST応答のストリーミングまたは別途GETで確立したストリームで使用
+リクエスト処理
+- POST /messagesでリクエスト送信
+- SSEで応答
+- POST /mcpでリクエスト送信
+- JSONまたはSSEで応答
+柔軟性
+- 比較的低く、2つのエンドポイントが必要
+- 高く、単一エンドポイントで全て処理
+現在のステータス
+- 古い方法、Streamable HTTPに置き換え
+- 新しい標準、推奨
+結論と考察
+HTTP with SSEはMCPの初期トランスポートであり、シンプルですが2つのエンドポイントを管理する必要があるため制限があります。一方、Streamable HTTPはより柔軟で、単一の/mcpエンドポイントで全ての通信を処理し、応答をJSONまたはSSEストリームで返すことができます。2025年3月26日の仕様書では、Streamable HTTPが新しい標準として推奨されており、HTTP with SSEは後方互換性のためにサポートされていますが、新しい実装ではStreamable HTTPを使用することが推奨されます。
+セキュリティやセッション管理の観点からも、Streamable HTTPはより包括的で、Originヘッダーの検証やセッションIDの使用など、現代の要件を満たしています。開発者ブログやGitHubリポジトリ（例：GitHub - modelcontextprotocol/typescript-sdk）からも、Streamable HTTPの採用が進んでいることが確認できます。
+主要引用文献
+Model Context Protocol Specification 2025-03-26詳細
+Model Context Protocol Transports概要
+GitHub MCP TypeScript SDK公式

@@ -11,7 +11,5 @@ class AppConfig:
     """
     ELASTICSEARCH_URL: str = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
     ELASTICSEARCH_CLIENT: ElasticsearchClient = ElasticsearchClient(host=ELASTICSEARCH_URL)
-    # 新しい設定項目
-    MCP_TRANSPORT_TYPE: str = os.getenv("MCP_TRANSPORT_TYPE", "streamable-http").lower() # デフォルトはstreamable-http
 
 config = AppConfig()

@@ -129,6 +129,12 @@ Elasticsearch 8.18.1 (公式Dockerイメージ)
 MCPの仕様についての情報が必要な場合は、以下のファイルを参照。
 - reference/mcp.txt
 
+MCPClientの処理についての情報が必要な場合は、以下のファイルを参照。
+- reference/mcp_sequence.txt
+
+MCP Python SDK使い方については、以下のファイルを参照
+- reference/mcp_python_sdk.md
+
 ## セキュリティガイドライン
 
 - 機密情報（API キー、パスワードなど）はハードコーディングしない

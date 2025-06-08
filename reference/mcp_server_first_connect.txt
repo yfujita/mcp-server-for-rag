@@ -1,0 +1,88 @@
+質問
+clineで今のように自作リモートサーバーのMCPを設定した
+{
+  "mcpServers": {
+    "test": {
+      "url": "http://localhost:8000/mcp",
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}しかしconnectで失敗してしまう。
+サーバー側には以下のログが出力されている。
+mcp-server-for-rag-mcp-api-1        | INFO:     172.19.0.1:59844 - "GET /mcp HTTP/1.1" 200 OKしかし、cline側でconnectingのまま固まってしまう。
+GET /mcpは何を返せばいいのだろう。
+
+
+----
+直接回答
+主なポイント:
+GET /mcp エンドポイントは、Server-Sent Events (SSE) 接続を確立するために使用されます。
+サーバーは、Content-Type: text/event-stream ヘッダーを含む 200 OK レスポンスを返す必要があります。
+他のヘッダー（Cache-Control: no-cache、Connection: keep-alive）も推奨されます。
+レスポンスボディは最初は空で、サーバーはイベントをストリーミングする必要があります。
+背景:
+あなたのカスタム MCP (Model Context Protocol) サーバーは、cline クライアントが接続しようとするときに GET /mcp を呼び出しますが、接続が「connecting」のまま固まっています。サーバーログでは 200 OK と表示されていますが、これはおそらく必要なヘッダーが欠けているためです。
+解決策:
+サーバーが GET /mcp に正しく応答するには、以下のヘッダーを含める必要があります：
+Content-Type: text/event-stream
+Cache-Control: no-cache（オプションだが推奨）
+Connection: keep-alive（オプションだが推奨）
+例:
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive
+その後、サーバーは SSE 接続を通じてイベントを送信する必要があります。これにより、cline は接続を正常に確立できるはずです。
+参考資料:
+詳細は MDN Web Docs - Server-Sent Events をご覧ください。
+調査ノート
+はじめに
+この調査ノートでは、ユーザーがカスタム MCP (Model Context Protocol) サーバーを設定し、cline クライアントで接続に失敗している問題について詳しく分析します。サーバーは GET /mcp に 200 OK で応答していますが、cline は「connecting」のまま固まっています。調査の目的は、GET /mcp エンドポイントが何を返すべきかを特定し、問題の解決策を提案することです。調査は 2025 年 6 月 7 日 12:36 JST 時点の情報に基づいています。
+MCP と Transport の概要
+MCP は、AI モデル（例: 言語モデル）を外部ツールやデータソースに接続するためのオープン標準です。プロトコルは複数のトランスポートメカニズムをサポートしており、特に HTTP+SSE (Server-Sent Events) が関連しています。HTTP+SSE では、GET /mcp エンドポイントは SSE 接続を確立するために使用され、クライアントとサーバー間のイベントストリーミングを可能にします。
+調査の過程で、MCP の仕様や実装例、SSE の標準的な動作を参照しました。以下に詳細をまとめます。
+GET /mcp の期待されるレスポンス
+SSE 接続を確立するためには、サーバーは GET /mcp に対するレスポンスに特定の HTTP ヘッダーを含める必要があります。以下の表に、必須および推奨されるヘッダーを示します。
+ヘッダー名
+値
+説明
+Content-Type
+text/event-stream
+クライアントにレスポンスがイベントストリームであることを示す必須ヘッダー
+Cache-Control
+no-cache
+キャッシュを防ぐための推奨ヘッダー
+Connection
+keep-alive
+接続を維持するための推奨ヘッダー
+これらのヘッダーが欠けている場合、クライアント（この場合は cline）はレスポンスを SSE ストリームとして認識できず、接続が「connecting」のまま固まる可能性があります。
+例えば、MDN Web Docs によると、SSE 接続の例は以下のようになります：
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive
+
+data: First event
+data: Second event
+初期レスポンスの後、サーバーはイベントをストリーミングする必要があります。
+問題の分析
+ユーザーのサーバーログでは、GET /mcp に 200 OK で応答していることが確認されていますが、cline が接続に失敗していることから、レスポンスに Content-Type: text/event-stream ヘッダーが含まれていない可能性が高いです。このヘッダーがないと、cline は SSE 接続を確立できず、接続が「connecting」のまま固まる可能性があります。
+さらに、MCP の HTTP+SSE トランスポートでは、GET /mcp は SSE 接続の初期化に使用され、POST /messages はリクエスト送信に使用されます。このため、GET /mcp のレスポンスが正しくないと、以降の通信が進行しないと考えられます。
+解決策の提案
+サーバーを修正し、GET /mcp に対するレスポンスに以下のヘッダーを含める必要があります：
+Content-Type: text/event-stream
+Cache-Control: no-cache（オプションだが推奨）
+Connection: keep-alive（オプションだが推奨）
+レスポンスボディは最初は空で、サーバーは SSE 接続を通じてイベントを送信する必要があります。これにより、cline は接続を正常に確立できるはずです。
+追加の考慮事項
+MCP サーバーの実装例を調査した結果、HTTP+SSE トランスポートを使用する場合、標準的な SSE ヘッダーが必要であることが確認されました。例えば、Building A Simple MCP Server や How to MCP - The Complete Guide では、SSE の実装に関する詳細が記載されています。
+また、cline 固有の動作については、公式ドキュメント（Configuring MCP Servers - Cline）を確認しましたが、GET /mcp の具体的なレスポンス形式については明示されていませんでした。しかし、MCP の標準仕様に基づけば、SSE の標準的なヘッダーが必要であると結論付けられます。
+結論
+GET /mcp エンドポイントは、Content-Type: text/event-stream を含む 200 OK レスポンスを返す必要があります。追加のヘッダー（Cache-Control: no-cache、Connection: keep-alive）も推奨されます。これにより、cline は SSE 接続を正常に確立し、接続の問題が解決されるはずです。
+主要引用
+MDN Web Docs - Server-Sent Events
+How to MCP - The Complete Guide to Understanding Model Context Protocol and Building Remote Servers
+Building A Simple MCP Server
+Configuring MCP Servers - Cline
+Use MCP servers in VS Code (Preview)

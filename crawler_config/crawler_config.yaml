@@ -8,6 +8,6 @@ exclude_url_patterns: []
 max_depth: 10
 delay: 0.5
 user_agent: "MSFR Crawler/1.0"
-es_index: "test_index"
+es_index: "es_1_5_reference"
 es_index_description: "Elasticsearch 1.5 Reference Guide."
-max_documents: 20
+max_documents: 2000
