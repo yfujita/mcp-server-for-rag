@@ -107,14 +107,14 @@ composeの定義ファイルはcompose.yamlに記載する。
 
 ### APIサーバー  (mcp/indexer)
 
-- 言語: Python 3.9
+- 言語: Python 3.10
 - フレームワーク: FastAPI
-- ベースDockerイメージ: python3.9-slim
+- ベースDockerイメージ: python3.10-slim
 
 ### Crawler
-- 言語: Python 3.9
+- 言語: Python 3.10
 - フレームワーク: Scrapy
-- ベースDockerイメージ: python3.9-slim
+- ベースDockerイメージ: python3.10-slim
 
 ### 検索エンジン
 
