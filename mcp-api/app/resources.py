@@ -27,7 +27,6 @@ class ReadResourceResult(BaseModel):
 def handle_resource_list() -> ResourceListResult:
     """
     利用可能なリソースをリストします。
-    Lists available resources.
     """
     # 現時点では動的にリソースをリストアップする機能はないため、空のリストを返します。
     return ResourceListResult(resources=[])
@@ -35,7 +34,6 @@ def handle_resource_list() -> ResourceListResult:
 def handle_resource_read(resource_uri: str) -> ResourceContent:
     """
     リソースの読み込みを処理し、ResourceContentオブジェクトを返します。
-    Handles resource read requests and returns a ResourceContent object.
     現在はリソースを提供しないため、エラーを返します。
     """
     return ResourceContent(

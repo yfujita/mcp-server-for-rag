@@ -15,7 +15,6 @@ from .tools import ( # tools.py からツール関数とPydanticモデルをイ�
     DocumentContent,
     IndexInfo,
     IndexListResult,
-    _extract_highlight # _extract_highlight も tools.py に残す
 )
 
 logger = logging.getLogger(__name__)

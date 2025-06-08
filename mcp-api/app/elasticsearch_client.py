@@ -14,12 +14,12 @@ class ElasticsearchClient:
     HTTPリクエストで検索・取得を行います。
     """
 
-    def __init__(self, host: str = None):
+    def __init__(self, host: str):
         """
         クライアントを初期化します。
-        :param host: ElasticsearchのホストURLまたはホスト名（例: localhost:9200）
+        :param host: ElasticsearchのホストURLまたはホスト名（例: http://localhost:9200）
         """
-        self.host = host or os.getenv("ELASTICSEARCH_HOST", "localhost:9200")
+        self.host = host
         self.base_url = self._normalize_host_url(self.host)
         self.session = requests.Session()
 

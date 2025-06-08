@@ -1,7 +1,10 @@
+import logging
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, ValidationError
 
 from .elasticsearch_client import ElasticsearchClient, NotFoundError
+
+logger = logging.getLogger(__name__)
 
 # ツール関数の引数として使用されるPydanticモデルは残す
 class SearchToolParams(BaseModel):
@@ -160,15 +163,20 @@ def list_elasticsearch_indices_tool(es_client: ElasticsearchClient) -> IndexList
                 mapping = es_client.get_index_mapping(index_name)
                 # _meta.description を取得
                 # mappingの構造は {index_name: {mappings: {_meta: {description: "..."}}}}
-                meta_description = mapping.get(index_name, {}).get("mappings", {}).get("_meta", {}).get("description")
+                index_mapping = mapping.get(index_name, {})
+                mappings_data = index_mapping.get("mappings", {})
+                meta_data = mappings_data.get("_meta", {})
+                meta_description = meta_data.get("description")
+
                 if meta_description and isinstance(meta_description, str) and meta_description.strip():
                     description = meta_description.strip()
             except NotFoundError:
                 # マッピングが見つからない場合は、descriptionは空のまま
+                logger.debug(f"Mapping not found for index {index_name}. Description will be default.")
                 pass
             except Exception as e:
                 # その他のエラーが発生した場合も、descriptionは空のまま
-                print(f"Error getting mapping for index {index_name}: {e}")
+                logger.error(f"Error getting mapping for index {index_name}: {e}")
 
             if not description: # _meta.description が存在しないか空文字の場合
                 if index_name.startswith("."):
