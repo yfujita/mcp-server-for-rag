@@ -21,8 +21,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("MCP API server starting up")
     logger.info(f"Version: {app.version}")
             
-    # FastMCPのセッションマネージャーの起動は、app.mount()でFastMCPのASGIアプリがマウントされる際に
-    # 内部で処理されるため、ここでは不要。
+    # FastMCPのセッションマネージャーの起動
+    if config.MCP_TRANSPORT_TYPE == "streamable-http":
+        logger.info("Starting streamable HTTP session manager")
+        await mcp.run_streamable_http()
+    
     yield
     logger.info("MCP API server shutting down")
 
@@ -30,7 +33,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="MCP API",
     description="Retrieval API for matching documents",
-    version="0.1.0",
     lifespan=lifespan, # lifespanをFastAPIに登録
     redirect_slashes=False # スラッシュのリダイレクトを無効にする
 )

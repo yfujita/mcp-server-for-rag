@@ -47,17 +47,44 @@ cp mcp-api/.env.example mcp-api/.env
 ### サービスの起動
 プロジェクトのルートディレクトリで以下のコマンドを実行し、ElasticsearchとMCP APIサーバーを起動します。
 
+**方法1: スクリプトを使用**
+```bash
+./run.sh
+```
+
+**方法2: docker composeを直接実行**
 ```bash
 docker compose up -d elasticsearch mcp-api
 ```
 
 ### クローラーの実行
-クローラーは手動で実行します。以下のコマンドでクローラーサービスを起動します。
+クローラーは手動で実行します。専用のスクリプトを使用して起動できます。
 
+**方法1: スクリプトを使用（推奨）**
 ```bash
-docker compose run --rm crawler python app/main.py --config crawler_config/crawler_config.yaml
+# デフォルト設定ファイル（crawler_config.yaml）を使用
+./run-crawler.sh
+
+# 特定の設定ファイルを指定
+./run-crawler.sh crawler_config_es1.yaml
+./run-crawler.sh crawler_config_it.yaml
 ```
-`crawler_config/crawler_config.yaml` は、クロール対象のURLや深さなどの設定を定義するファイルです。必要に応じて別の設定ファイルを指定できます。
+
+**方法2: docker composeを直接実行**
+```bash
+# デフォルト設定ファイルを使用
+docker compose up crawler
+
+# 特定の設定ファイルを指定
+CRAWLER_CONFIG_FILE=crawler_config_es1.yaml docker compose up crawler
+```
+
+**利用可能な設定ファイル:**
+- `crawler_config.yaml` - デフォルト設定
+- `crawler_config_es1.yaml` - Elasticsearch 1.5 ドキュメント用設定
+- `crawler_config_it.yaml` - IT関連ドキュメント用設定
+
+各設定ファイルは `crawler_config/` ディレクトリに配置され、クロール対象のURLや深さなどを定義します。
 
 ## 🌐 MCPエンドポイント
 
@@ -171,3 +198,85 @@ mcp://document/{index_name}/{document_id}
 └── scripts/                    # 各種スクリプト
     └── test/
         └── test-it.sh
+```
+
+## 🧪 curlでSSEテスト
+
+MCP APIサーバーがSSEモードで起動している場合、curlを使ってAPIをテストできます。
+
+### 1. SSE接続の開始
+
+```bash
+# SSEエンドポイントに接続してイベントストリームを開始
+curl -N -H "Accept: text/event-stream" http://localhost:8000/sse
+```
+
+レスポンスからセッションIDを取得：
+```
+event: endpoint
+data: /messages/?session_id=セッションID
+```
+
+### 2. MCPプロトコルテスト
+
+#### 初期化
+```bash
+curl -X POST -H "Content-Type: application/json" \
+  --data '{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "clientInfo": {"name": "curl-test", "version": "1.0.0"}}}' \
+  "http://localhost:8000/messages/?session_id=セッションID"
+```
+
+#### ツール一覧の取得
+```bash
+curl -X POST -H "Content-Type: application/json" \
+  --data '{"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}' \
+  "http://localhost:8000/messages/?session_id=セッションID"
+```
+
+#### インデックス一覧の取得
+```bash
+curl -X POST -H "Content-Type: application/json" \
+  --data '{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "list_elasticsearch_indices", "arguments": {}}}' \
+  "http://localhost:8000/messages/?session_id=セッションID"
+```
+
+#### ドキュメント検索
+```bash
+curl -X POST -H "Content-Type: application/json" \
+  --data '{"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "search", "arguments": {"query": "elasticsearch", "index": "インデックス名"}}}' \
+  "http://localhost:8000/messages/?session_id=セッションID"
+```
+
+#### ドキュメント詳細取得
+```bash
+curl -X POST -H "Content-Type: application/json" \
+  --data '{"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "get_document_by_id", "arguments": {"document_id": "ドキュメントID", "index": "インデックス名"}}}' \
+  "http://localhost:8000/messages/?session_id=セッションID"
+```
+
+### 3. 実際のワークフロー例
+
+```bash
+# 1. SSE接続開始（バックグラウンドで実行）
+curl -N -H "Accept: text/event-stream" http://localhost:8000/sse &
+
+# 2. レスポンスからセッションIDを確認し、環境変数に設定
+export SESSION_ID="取得したセッションID"
+
+# 3. 初期化
+curl -X POST -H "Content-Type: application/json" \
+  --data '{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "clientInfo": {"name": "curl-test", "version": "1.0.0"}}}' \
+  "http://localhost:8000/messages/?session_id=$SESSION_ID"
+
+# 4. インデックス確認
+curl -X POST -H "Content-Type: application/json" \
+  --data '{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "list_elasticsearch_indices", "arguments": {}}}' \
+  "http://localhost:8000/messages/?session_id=$SESSION_ID"
+
+# 5. ドキュメント検索
+curl -X POST -H "Content-Type: application/json" \
+  --data '{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "search", "arguments": {"query": "elasticsearch", "index": "es_1_5_reference"}}}' \
+  "http://localhost:8000/messages/?session_id=$SESSION_ID"
+```
+
+**注意**: SSE接続は継続的に行われるため、別のターミナルでメッセージの送信を行うか、バックグラウンドプロセスを使用してください。

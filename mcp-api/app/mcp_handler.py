@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 # FastMCPインスタンスの作成
 mcp = FastMCP(
     name="RAG MCP Server",
-    version="0.1.0", # 仮のバージョン。configから取得することも可能
     instructions="This server provides tools for searching documents and getting document content by ID. Use the 'search' tool to find documents by keyword. Use the 'get_document_by_id' tool to retrieve the full content of a document."
 )
 

@@ -19,7 +19,8 @@ services:
     build:
       context: ./mcp-api
     env_file:
-      - ./mcp-api/.env.example
+      - ./mcp-api/.env.sse
+      # - ./mcp-api/.env.streamable_http
     ports:
       - "8000:8000"
     networks:
@@ -38,6 +39,7 @@ services:
       # ElasticsearchホストはDockerネットワーク名を使用
       - ES_HOST=elasticsearch
       - ES_PORT=9200
+      - CRAWLER_CONFIG_FILE=${CRAWLER_CONFIG_FILE:-crawler_config.yaml}
     networks:
       - mcp-network
 
