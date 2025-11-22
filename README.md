@@ -14,7 +14,7 @@ FastAPIをベースにしたMCPサーバーです。
     - URI形式 (`mcp://document/{index_name}/{document_id}`) でドキュメントの内容にアクセスできます。
 
 ### 2. Crawler (`crawler`)
-ScrapyをベースにしたWebクローラーです。
+requests + BeautifulSoupをベースにしたWebクローラーです。
 - 指定されたURLからWebページをクロールし、その内容を抽出します。
 - 抽出されたドキュメントはElasticsearchにインデックスされます。
 - クロール設定は`crawler_config`ディレクトリ内のYAMLファイルで管理されます。
@@ -28,7 +28,7 @@ ScrapyをベースにしたWebクローラーです。
 
 - **コンテナオーケストレーション**: Docker Compose
 - **MCP Server**: Python 3.10, FastAPI
-- **Crawler**: Python 3.10, Scrapy
+- **Crawler**: Python 3.10, requests, BeautifulSoup
 - **検索エンジン**: Elasticsearch 8.18.1
 
 ## ⚙️ セットアップ
