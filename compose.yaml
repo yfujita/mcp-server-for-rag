@@ -19,8 +19,8 @@ services:
     build:
       context: ./mcp-api
     env_file:
-      - ./mcp-api/.env.sse
-      # - ./mcp-api/.env.streamable_http
+      # - ./mcp-api/.env.sse
+      - ./mcp-api/.env.streamable_http
     ports:
       - "8000:8000"
     networks:

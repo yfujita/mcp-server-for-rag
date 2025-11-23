@@ -280,3 +280,108 @@ curl -X POST -H "Content-Type: application/json" \
 ```
 
 **注意**: SSE接続は継続的に行われるため、別のターミナルでメッセージの送信を行うか、バックグラウンドプロセスを使用してください。
+
+## curlでStreamable HTTPテスト
+
+### 初期化
+
+レスポンスヘッダ中の `mcp-session-id` をメモる。
+
+```bash
+curl -i -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2024-11-05",
+      "capabilities": {
+        "roots": {
+          "listChanged": true
+        },
+        "sampling": {}
+      },
+      "clientInfo": {
+        "name": "curl-client",
+        "version": "1.0.0"
+      }
+    }
+  }'
+```
+
+### ツール取得
+
+```bash
+curl -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: 12d6c8d3655441b581236946d73b68b5" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/list",
+    "params": {}
+  }'
+```
+
+### インデックス一覧取得
+
+```bash
+curl -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: 12d6c8d3655441b581236946d73b68b5" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+      "name": "list_elasticsearch_indices",
+      "arguments": {}
+    }
+  }'
+```
+
+### 検索
+
+```bash
+curl -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: 12d6c8d3655441b581236946d73b68b5" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "tools/call",
+    "params": {
+      "name": "search",
+      "arguments": {
+        "query": "elasticsearch",
+        "index": "es_1_5_reference"
+      }
+    }
+  }'
+```
+
+### ドキュメント取得
+
+```bash
+curl -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: 12d6c8d3655441b581236946d73b68b5" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "tools/call",
+    "params": {
+      "name": "get_document_by_id",
+      "arguments": {
+        "document_id": "aHR0cHM6Ly93d3cuZWxhc3RpYy5jby9ndWlkZS9lbi9lbGFzdGljc2VhcmNoL3JlZmVyZW5jZS8xLjUvc2V0dXAtZGlyLWxheW91dC5odG1s",
+        "index": "es_1_5_reference"
+      }
+    }
+  }'
+```

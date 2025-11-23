@@ -20,21 +20,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Manage application lifecycle for MCP server."""
     logger.info("MCP API server starting up")
     logger.info(f"Version: {app.version}")
-            
-    # FastMCPのセッションマネージャーの起動
-    if config.MCP_TRANSPORT_TYPE == "streamable-http":
-        logger.info("Starting streamable HTTP session manager")
-        await mcp.run_streamable_http()
     
-    yield
-    logger.info("MCP API server shutting down")
+    # AsyncExitStackを使用してコンテキストを管理
+    async with contextlib.AsyncExitStack() as stack:
+        # FastMCPのセッションマネージャーの起動
+        if config.MCP_TRANSPORT_TYPE == "streamable-http":
+            logger.info("Starting streamable HTTP session manager")
+            # run_streamable_http_async() を await するのではなく、
+            # session_manager.run() をコンテキストとして起動します
+            # SDKのドキュメントに基づいた実装パターンです
+            if hasattr(mcp, "session_manager"):
+                await stack.enter_async_context(mcp.session_manager.run())
+            else:
+                logger.warning("mcp object does not have session_manager attribute. Skipping session manager start.")
+
+        yield
+        logger.info("MCP API server shutting down")
 
 
 app = FastAPI(
     title="MCP API",
     description="Retrieval API for matching documents",
-    lifespan=lifespan, # lifespanをFastAPIに登録
-    redirect_slashes=False # スラッシュのリダイレクトを無効にする
+    lifespan=lifespan, 
+    redirect_slashes=False 
 )
 
 # CORS設定
