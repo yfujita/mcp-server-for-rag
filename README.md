@@ -38,11 +38,12 @@ requests + BeautifulSoupをベースにしたWebクローラーです。
 - Docker Compose
 
 ### 環境変数の設定
-`mcp-api` サービスは環境変数を使用します。`mcp-api/.env.example` を `mcp-api/.env` にコピーし、必要に応じて設定を調整してください。
+`mcp-api` サービスは環境変数を使用します。用意された設定ファイルを選択して使用してください：
 
-```bash
-cp mcp-api/.env.example mcp-api/.env
-```
+- SSEモード: `mcp-api/.env.sse`
+- Streamable HTTPモード: `mcp-api/.env.streamable_http`（デフォルト）
+
+`compose.yaml` で使用する設定ファイルを変更できます。
 
 ### サービスの起動
 プロジェクトのルートディレクトリで以下のコマンドを実行し、ElasticsearchとMCP APIサーバーを起動します。
@@ -88,16 +89,18 @@ CRAWLER_CONFIG_FILE=crawler_config_es1.yaml docker compose up crawler
 
 ## 🌐 MCPエンドポイント
 
-MCPサーバーのエンドポイントは、`mcp-api/.env` で設定される `MCP_TRANSPORT_TYPE` に応じて異なります。
+MCPサーバーのエンドポイントは、設定ファイルで指定される `MCP_TRANSPORT_TYPE` に応じて異なります。
 - `MCP_TRANSPORT_TYPE=sse` の場合: `/sse`
-- `MCP_TRANSPORT_TYPE=streamable-http` の場合: `/mcp`
+- `MCP_TRANSPORT_TYPE=streamable-http` の場合: `/mcp`（デフォルト）
+
+現在は `compose.yaml` で `.env.streamable_http` がデフォルトで使用されます。
 
 ## 💡 使い方
 
 ### MCPツールの利用例
 
 #### ドキュメント検索 (`search`)
-タイトルまたはコンテンツにキーワードを含むドキュメントを検索し、{id, title} のリストを返します。指定されたindexを検索します。
+タイトルまたはコンテンツにキーワードを含むドキュメントを検索し、{id, title, highlight} のリストを返します。指定されたindexを検索し、ページネーション機能も提供します。
 
 ```json
 {
@@ -124,7 +127,7 @@ MCPサーバーのエンドポイントは、`mcp-api/.env` で設定される `
 ```
 
 #### Elasticsearchインデックスのリスト取得 (`list_elasticsearch_indices`)
-Elasticsearchの全インデックスのリストと説明を返します。
+Elasticsearchの全インデックスのリストと説明を返します。説明は各インデックスの `_meta.description` から自動取得されます。
 
 ```json
 {
@@ -135,76 +138,13 @@ Elasticsearchの全インデックスのリストと説明を返します。
 
 ### MCPリソースの利用例
 
-ドキュメントの内容は、MCPリソースとしてURI形式でアクセスできます。
-
-```
-mcp://document/{index_name}/{document_id}
-```
-
-例: `mcp://document/my_documents_index/doc_12345`
-
-## 📂 ディレクトリ構造
-
-```
-.
-├── .clinerules                 # Clineのルール定義
-├── .gitignore                  # Git無視ファイル
-├── compose.yaml                # Docker Compose定義ファイル
-├── README.md                   # このREADMEファイル
-├── run-crawler.sh              # クローラー実行スクリプト
-├── run.sh                      # サービス起動スクリプト
-├── crawler/                    # Webクローラーサービス
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── run.sh
-│   └── app/                    # クローラーのPythonアプリケーション
-│       ├── clawler.py
-│       ├── crawl_config.py
-│       ├── crawl_result_queue.py
-│       ├── crawl_target_queue.py
-│       ├── crawler.py
-│       ├── document_entity.py
-│       ├── elasticsearch_client.py
-│       ├── main.py
-│       └── transformer.py
-├── crawler_config/             # クローラーの設定ファイル
-│   ├── crawler_config_es1.yaml
-│   ├── crawler_config_it.yaml
-│   └── crawler_config.yaml
-├── elasticsearch/              # Elasticsearchサービス
-│   └── Dockerfile
-├── esdata/                     # Elasticsearchのデータ永続化ディレクトリ
-├── mcp-api/                    # MCP APIサーバーサービス
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── .env.example            # 環境変数の例
-│   └── app/                    # MCP APIのPythonアプリケーション
-│       ├── config.py
-│       ├── elasticsearch_client.py
-│       ├── main.py
-│       ├── mcp_handler.py
-│       ├── resources.py
-│       └── tools.py
-├── mcp-api-backup-fastapimcp/  # MCP APIサーバーのバックアップ (旧バージョン)
-├── memory-bank/                # (用途不明、現状空)
-├── reference/                  # 参考資料
-│   ├── mcp_python_sdk.md
-│   ├── mcp_sequence.txt
-│   ├── mcp_server_developer_guide.txt
-│   ├── mcp_server_first_connect.txt
-│   ├── mcp.txt
-│   ├── readable_code.txt
-│   └── requirements_definition_crawler.md
-└── scripts/                    # 各種スクリプト
-    └── test/
-        └── test-it.sh
-```
+**注意**: 現在の実装ではMCPリソース機能は提供されていません。ドキュメントの内容は `get_document_by_id` ツールを使用してアクセスしてください。
 
 ## 🧪 curlでSSEテスト
 
-MCP APIサーバーがSSEモードで起動している場合、curlを使ってAPIをテストできます。
+**注意**: SSEモードを使用する場合は、`compose.yaml` で `.env.sse` を有効にしてください。
 
-### 1. SSE接続の開始
+### SSE接続の開始
 
 ```bash
 # SSEエンドポイントに接続してイベントストリームを開始
@@ -254,7 +194,7 @@ curl -X POST -H "Content-Type: application/json" \
   "http://localhost:8000/messages/?session_id=セッションID"
 ```
 
-### 3. 実際のワークフロー例
+### テスト例
 
 ```bash
 # 1. SSE接続開始（バックグラウンドで実行）
@@ -268,20 +208,15 @@ curl -X POST -H "Content-Type: application/json" \
   --data '{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "clientInfo": {"name": "curl-test", "version": "1.0.0"}}}' \
   "http://localhost:8000/messages/?session_id=$SESSION_ID"
 
-# 4. インデックス確認
+# ツール一覧
 curl -X POST -H "Content-Type: application/json" \
-  --data '{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "list_elasticsearch_indices", "arguments": {}}}' \
-  "http://localhost:8000/messages/?session_id=$SESSION_ID"
-
-# 5. ドキュメント検索
-curl -X POST -H "Content-Type: application/json" \
-  --data '{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "search", "arguments": {"query": "elasticsearch", "index": "es_1_5_reference"}}}' \
+  --data '{"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}' \
   "http://localhost:8000/messages/?session_id=$SESSION_ID"
 ```
 
-**注意**: SSE接続は継続的に行われるため、別のターミナルでメッセージの送信を行うか、バックグラウンドプロセスを使用してください。
-
 ## curlでStreamable HTTPテスト
+
+**注意**: デフォルトで `compose.yaml` は `.env.streamable_http` を使用し、エンドポイントは `/mcp` になります。
 
 ### 初期化
 
@@ -320,7 +255,7 @@ curl -X POST http://localhost:8000/mcp \
   -H "Mcp-Session-Id: 12d6c8d3655441b581236946d73b68b5" \
   -d '{
     "jsonrpc": "2.0",
-    "id": 1,
+    "id": 2,
     "method": "tools/list",
     "params": {}
   }'
