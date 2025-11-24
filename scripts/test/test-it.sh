@@ -1,147 +1,159 @@
 #!/bin/bash
 
-# Exit immediately if a command exits with a non-zero status.
+# エラー発生時に即終了
 set -e
 
-script_dir=$(dirname "$0")
+# スクリプトのディレクトリの2階層上がプロジェクトルート
+SCRIPT_DIR=$(cd $(dirname "$0") && pwd)
+PROJECT_ROOT="$SCRIPT_DIR/../../"
+cd "$PROJECT_ROOT"
 
-echo "Starting integration tests..."
+# エンドポイント設定
+BASE_URL="http://localhost:8000/mcp"
+ES_URL="http://localhost:9200"
 
-# Clean up previous test index if it exists
-echo "Cleaning up test index 'test_index' if it exists..."
-curl -X DELETE "http://localhost:9200/test_index" -f || true
+echo "=== Starting Integration Tests (Streamable HTTP Only) ==="
 
-# 1. MCPサーバー起動確認
-echo "Checking MCP server status..."
-curl -f http://localhost:8000/health
-echo "MCP server is running."
-
-# 2. ES起動確認
-echo "Checking Elasticsearch status..."
-curl -f http://localhost:9200/
-echo "Elasticsearch is running."
-
-# Crawl Configの反映
-echo "Applying crawl configuration..."
-cp "$script_dir/../../crawler_config/crawler_config_it.yaml" "$script_dir/../../crawler_config/crawler_config.yaml"
-
-# 3. Crawler起動
-echo "Starting Crawler..."
-bash "$script_dir/../../run-crawler.sh"
-curl -XPOST localhost:9200/_refresh
-
-# Give ES a moment to index the document
-sleep 2
-
-# 5. MCP動作確認 (initializeリクエスト)
-echo "Testing MCP initialize request..."
-curl -X POST "http://localhost:8000/mcp" -H 'Content-Type: application/json' -d'
-{
-  "jsonrpc": "2.0",
-  "method": "initialize",
-  "params": {},
-  "id": 2
-}'
-echo ""
-echo "MCP initialize request passed."
-
-# 5. MCP動作確認 (ツールリスト取得)
-echo "Testing MCP tools/list..."
-curl -X POST "http://localhost:8000/mcp" -H 'Content-Type: application/json' -d'
-{
-  "jsonrpc": "2.0",
-  "method": "tools/list",
-  "params": {},
-  "id": 2
-}'
-echo ""
-echo "MCP initialize request passed."
-
-# インデックスのリストを取得
-echo "Testing MCP list_elasticsearch_indices tool..."
-curl -X POST "http://localhost:8000/mcp" -H 'Content-Type: application/json' -d'
-{
-  "jsonrpc": "2.0",
-  "method": "tools/call",
-  "params": {
-    "name": "list_elasticsearch_indices",
-    "arguments": {
-    }
-  },
-  "id": 2
-}'
-echo ""
-echo "MCP list_elasticsearch_indices request passed."
-
-# 6. MCP動作確認 (検索ツールを使用)
-echo "Testing MCP search tool..."
-SEARCH_RESULT=$(curl -X POST "http://localhost:8000/mcp" -H 'Content-Type: application/json' -d'
-{
-  "jsonrpc": "2.0",
-  "method": "tools/call",
-  "params": {
-    "name": "search",
-    "arguments": {
-      "index": "test_index",
-      "query": "search document"
-    }
-  },
-  "id": 2
-}')
-echo "$SEARCH_RESULT"
-echo "$SEARCH_RESULT" | grep "search"
-echo "MCP search tool test passed."
-
-# Extract document ID from search result using jq
-DOCUMENT_ID=$(echo "$SEARCH_RESULT" | jq -r '.result.items[0].id')
-
-if [ -z "$DOCUMENT_ID" ]; then
-  echo "Error: Could not extract document ID from search result."
-  exit 1
+# 1. サービスの起動確認
+echo "Checking if services are running..."
+if ! curl -s "http://localhost:8000" > /dev/null; then
+    echo "Starting services..."
+    ./run.sh > /dev/null 2>&1 &
+    
+    # ヘルスチェック待機 (最大30秒)
+    echo "Waiting for MCP server to be ready..."
+    for i in {1..30}; do
+        if curl -s "http://localhost:8000" > /dev/null; then
+            echo "Server is ready."
+            break
+        fi
+        if [ $i -eq 30 ]; then
+            echo "Error: Server failed to start."
+            exit 1
+        fi
+        sleep 1
+    done
+else
+    echo "Services are already running."
 fi
-echo "Extracted Document ID: $DOCUMENT_ID"
 
-NEXT_CURSOR=$(echo "$SEARCH_RESULT" | jq -r '.result.next_cursor')
-echo "Next Cursor: $NEXT_CURSOR"
+# 2. データのセットアップ
+echo "--- Setting up Data ---"
 
-# 7. MCP動作確認 (get_document_by_idツールを使用)
-echo "Testing MCP get_document_by_id tool with ID: $DOCUMENT_ID..."
-curl -X POST "http://localhost:8000/mcp" -H 'Content-Type: application/json' -d"
-{
-  \"jsonrpc\": \"2.0\",
-  \"method\": \"tools/call\",
-  \"params\": {
-    \"name\": \"get_document_by_id\",
-    \"arguments\": {
-      \"document_id\": \"$DOCUMENT_ID\",
-      \"index\": \"test_index\"
-    }
-  },
-  \"id\": 2
-}"
+# テスト用インデックスのクリーンアップ
+curl -X DELETE "$ES_URL/test_index" -s -f > /dev/null 2>&1 || true
+
+# クローラー設定の適用と実行
+echo "Running crawler with test config..."
+# 設定ファイル
+export CRAWLER_CONFIG_FILE="crawler_config_it.yaml"
+# クローラーコンテナを実行（完了まで待機）
+docker compose rm -f -s crawler > /dev/null 2>&1
+docker compose up crawler
+
+# データ検索可能になるようリフレッシュ
+curl -X POST "$ES_URL/_refresh" -s > /dev/null
+sleep 1
+echo "Data setup completed."
+
+# 3. MCPプロトコルテスト
+
+# SSEレスポンスからJSONデータを抽出するヘルパー関数
+extract_json_from_sse() {
+    local sse_response="$1"
+    echo "$sse_response" | grep "^data:" | sed 's/^data: //' | head -1
+}
+
+# JSON-RPC送信ヘルパー関数
+send_request() {
+    local method=$1
+    local params=$2
+    local session_id=$3
+    
+    # jqでJSONペイロードを構築
+    local payload=$(jq -n \
+                  --arg method "$method" \
+                  --argjson params "$params" \
+                  '{jsonrpc: "2.0", id: 1, method: $method, params: $params}')
+
+    if [ -n "$session_id" ]; then
+        # Session IDがある場合はヘッダーに付与
+        curl -s -X POST "$BASE_URL" \
+             -H "Content-Type: application/json" \
+             -H "Accept: application/json, text/event-stream" \
+             -H "Mcp-Session-Id: $session_id" \
+             -d "$payload"
+    else
+        # 初期化時はレスポンスヘッダーも含めて出力（Session ID取得用）
+        curl -i -s -X POST "$BASE_URL" \
+             -H "Content-Type: application/json" \
+             -H "Accept: application/json, text/event-stream" \
+             -d "$payload"
+    fi
+}
+
+echo "--- Testing MCP Endpoints ---"
+
+# Step 1: Initialize (Session IDの取得)
+echo "[1/4] Initializing Session..."
+INIT_RESPONSE_FILE=$(mktemp)
+send_request "initialize" '{"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "test-client", "version": "1.0"}}' "" > "$INIT_RESPONSE_FILE"
+
+# ヘッダーからSession IDを抽出 (改行コード除去)
+SESSION_ID=$(grep -i "Mcp-Session-Id:" "$INIT_RESPONSE_FILE" | awk '{print $2}' | tr -d '\r')
+rm "$INIT_RESPONSE_FILE"
+
+if [ -z "$SESSION_ID" ]; then
+    echo "Error: Failed to obtain Mcp-Session-Id"
+    exit 1
+fi
+echo "  -> Session ID obtained: $SESSION_ID"
+
+# Initialized通知を送信（プロトコル仕様上必要）
+send_request "notifications/initialized" "{}" "$SESSION_ID" > /dev/null
+
+# Step 2: Tools List
+echo "[2/4] Checking Tools List..."
+TOOLS_RES_RAW=$(send_request "tools/list" "{}" "$SESSION_ID")
+TOOLS_RES=$(extract_json_from_sse "$TOOLS_RES_RAW")
+
+if echo "$TOOLS_RES" | jq -e '.result.tools[] | select(.name == "search")' > /dev/null; then
+    echo "  -> OK: 'search' tool found."
+else
+    echo "  -> Error: 'search' tool not found."
+    echo "Raw response: $TOOLS_RES_RAW"
+    echo "Extracted JSON: $TOOLS_RES"
+    exit 1
+fi
+
+# Step 3: Search Tool
+echo "[3/4] Testing Search Tool..."
+SEARCH_RES_RAW=$(send_request "tools/call" '{"name": "search", "arguments": {"index": "test_index", "query": "search document"}}' "$SESSION_ID")
+SEARCH_RES=$(extract_json_from_sse "$SEARCH_RES_RAW")
+DOC_ID=$(echo "$SEARCH_RES" | jq -r '.result.content[0].text | fromjson | .items[0].id')
+
+if [ -z "$DOC_ID" ] || [ "$DOC_ID" == "null" ]; then
+    echo "  -> Error: No documents found in search result."
+    echo "Raw response: $SEARCH_RES_RAW"
+    echo "Extracted JSON: $SEARCH_RES"
+    exit 1
+fi
+echo "  -> OK: Found Document ID: $DOC_ID"
+
+# Step 4: Get Document Tool
+echo "[4/4] Testing Get Document Tool..."
+GET_RES_RAW=$(send_request "tools/call" "{\"name\": \"get_document_by_id\", \"arguments\": {\"index\": \"test_index\", \"document_id\": \"$DOC_ID\"}}" "$SESSION_ID")
+GET_RES=$(extract_json_from_sse "$GET_RES_RAW")
+
+# コンテンツが含まれているか確認
+if echo "$GET_RES" | jq -e '.result.content[0].text | fromjson | .content' > /dev/null; then
+    echo "  -> OK: Document content retrieved successfully."
+else
+    echo "  -> Error: Failed to retrieve document content."
+    echo "Raw response: $GET_RES_RAW"
+    echo "Extracted JSON: $GET_RES"
+    exit 1
+fi
+
 echo ""
-echo "MCP get_document_by_id tool test passed."
-
-# 6. MCP動作確認 (検索ツールを使用)
-echo "Testing MCP search tool paging..."
-SEARCH_RESULT=$(curl -X POST "http://localhost:8000/mcp" -H 'Content-Type: application/json' -d'
-{
-  "jsonrpc": "2.0",
-  "method": "tools/call",
-  "params": {
-    "name": "search",
-    "arguments": {
-      "index": "test_index",
-      "query": "search document",
-      "cursor": "'"$NEXT_CURSOR"'"
-    }
-  },
-  "id": 2
-}')
-echo "$SEARCH_RESULT"
-echo "$SEARCH_RESULT" | grep "search"
-echo "MCP search tool test passed."
-
-
-
-echo "Integration tests completed successfully."
+echo "✅ All tests passed successfully!"

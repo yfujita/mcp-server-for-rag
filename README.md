@@ -11,7 +11,7 @@ FastAPIをベースにしたMCPサーバーです。
     - ドキュメントIDを指定して、ドキュメントの内容を返します。
     - Elasticsearchのインデックスリストを返します。
 - **リソース**:
-    - URI形式 (`mcp://document/{index_name}/{document_id}`) でドキュメントの内容にアクセスできます。
+    - 未実装
 
 ### 2. Crawler (`crawler`)
 requests + BeautifulSoupをベースにしたWebクローラーです。
