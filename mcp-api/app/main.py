@@ -54,6 +54,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/health")
+async def health_check():
+    """
+    Health check endpoint.
+    """
+    logger.debug("Health check called")
+    return {"status": "ok", "version": app.version}
+
+
 # トランスポートタイプに基づいてエンドポイントをマウント
 if config.MCP_TRANSPORT_TYPE == "sse":
     logger.info("Using SSE transport")
@@ -66,11 +75,3 @@ else:
     # 未知のタイプの場合はデフォルトでStreamable HTTPをマウント
     app.mount("/", mcp.streamable_http_app())
 
-
-@app.get("/health")
-async def health_check():
-    """
-    Health check endpoint.
-    """
-    logger.debug("Health check called")
-    return {"status": "ok", "version": app.version}

@@ -16,14 +16,14 @@ echo "=== Starting Integration Tests (Streamable HTTP Only) ==="
 
 # 1. サービスの起動確認
 echo "Checking if services are running..."
-if ! curl -s "http://localhost:8000" > /dev/null; then
+if ! curl -s "http://localhost:8000/health" > /dev/null; then
     echo "Starting services..."
     ./run.sh > /dev/null 2>&1 &
     
     # ヘルスチェック待機 (最大30秒)
     echo "Waiting for MCP server to be ready..."
     for i in {1..30}; do
-        if curl -s "http://localhost:8000" > /dev/null; then
+        if curl -s "http://localhost:8000/health" > /dev/null; then
             echo "Server is ready."
             break
         fi
@@ -42,13 +42,13 @@ echo "--- Setting up Data ---"
 
 # テスト用インデックスのクリーンアップ
 curl -X DELETE "$ES_URL/test_index" -s -f > /dev/null 2>&1 || true
+sleep 1
 
 # クローラー設定の適用と実行
 echo "Running crawler with test config..."
 # 設定ファイル
 export CRAWLER_CONFIG_FILE="crawler_config_it.yaml"
 # クローラーコンテナを実行（完了まで待機）
-docker compose rm -f -s crawler > /dev/null 2>&1
 docker compose up crawler
 
 # データ検索可能になるようリフレッシュ
@@ -58,10 +58,19 @@ echo "Data setup completed."
 
 # 3. MCPプロトコルテスト
 
-# SSEレスポンスからJSONデータを抽出するヘルパー関数
-extract_json_from_sse() {
-    local sse_response="$1"
-    echo "$sse_response" | grep "^data:" | sed 's/^data: //' | head -1
+# レスポンス形式を判定して抽出する関数
+extract_response_body() {
+    local response="$1"
+    
+    # SSE (data: ...) が含まれているか確認
+    if echo "$response" | grep -q "^data:"; then
+        # SSEの場合: data: の行を抽出
+        echo "$response" | grep "^data:" | sed 's/^data: //' | head -1
+    else
+        # JSONの場合: そのまま出力（ただしHTTPヘッダが含まれる場合は除去が必要）
+        # curl -s でボディだけ取得している場合はそのままでOK
+        echo "$response"
+    fi
 }
 
 # JSON-RPC送信ヘルパー関数
@@ -115,7 +124,7 @@ send_request "notifications/initialized" "{}" "$SESSION_ID" > /dev/null
 # Step 2: Tools List
 echo "[2/4] Checking Tools List..."
 TOOLS_RES_RAW=$(send_request "tools/list" "{}" "$SESSION_ID")
-TOOLS_RES=$(extract_json_from_sse "$TOOLS_RES_RAW")
+TOOLS_RES=$(extract_response_body "$TOOLS_RES_RAW")
 
 if echo "$TOOLS_RES" | jq -e '.result.tools[] | select(.name == "search")' > /dev/null; then
     echo "  -> OK: 'search' tool found."
@@ -129,7 +138,7 @@ fi
 # Step 3: Search Tool
 echo "[3/4] Testing Search Tool..."
 SEARCH_RES_RAW=$(send_request "tools/call" '{"name": "search", "arguments": {"index": "test_index", "query": "search document"}}' "$SESSION_ID")
-SEARCH_RES=$(extract_json_from_sse "$SEARCH_RES_RAW")
+SEARCH_RES=$(extract_response_body "$SEARCH_RES_RAW")
 DOC_ID=$(echo "$SEARCH_RES" | jq -r '.result.content[0].text | fromjson | .items[0].id')
 
 if [ -z "$DOC_ID" ] || [ "$DOC_ID" == "null" ]; then
@@ -143,7 +152,7 @@ echo "  -> OK: Found Document ID: $DOC_ID"
 # Step 4: Get Document Tool
 echo "[4/4] Testing Get Document Tool..."
 GET_RES_RAW=$(send_request "tools/call" "{\"name\": \"get_document_by_id\", \"arguments\": {\"index\": \"test_index\", \"document_id\": \"$DOC_ID\"}}" "$SESSION_ID")
-GET_RES=$(extract_json_from_sse "$GET_RES_RAW")
+GET_RES=$(extract_response_body "$GET_RES_RAW")
 
 # コンテンツが含まれているか確認
 if echo "$GET_RES" | jq -e '.result.content[0].text | fromjson | .content' > /dev/null; then
