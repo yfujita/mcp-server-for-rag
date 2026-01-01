@@ -18,6 +18,7 @@ services:
   mcp-api:
     build:
       context: ./mcp-api
+    container_name: rag-mcp-api
     env_file:
       # - ./mcp-api/.env.sse
       - ./mcp-api/.env.streamable_http

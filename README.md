@@ -95,7 +95,7 @@ MCPサーバーのエンドポイントは、設定ファイルで指定され�
 
 現在は `compose.yaml` で `.env.streamable_http` がデフォルトで使用されます。
 
-## 💡 使い方
+## MCP IF
 
 ### MCPツールの利用例
 
@@ -319,4 +319,29 @@ curl -X POST http://localhost:8000/mcp \
       }
     }
   }'
+```
+
+## 使い方
+
+### Claude Desktop
+
+Claude DesktopでMCPを利用する。
+claude_desktop_config.jsonに以下を設定。
+
+```
+{
+  "mcpServers": {
+    "rag-search": {
+      "command": "docker",
+      "args": [
+        "exec",
+        "-i",
+        "rag-mcp-api",
+        "python",
+        "-m",
+        "app.run_stdio"
+      ]
+    }
+  }
+}
 ```
