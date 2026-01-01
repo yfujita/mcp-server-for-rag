@@ -1,6 +1,51 @@
 # RAGのためのMCPサーバーマイクロサービス群
 
-このプロジェクトは、Retrieval Augmented Generation (RAG) のためのマイクロサービス群を提供します。Webページをクロールしてドキュメントを収集し、Elasticsearchに保存します。その後、MCP (Model Context Protocol) サーバーを通じて、保存されたドキュメントを検索・取得する機能を提供します。
+WebページをクロールしてElasticsearchに保存し、Claude Desktop や Cline から検索できるようにするMCPサーバーです。
+Dockerだけで完結するため、ローカル環境を汚さずにすぐにRAG（検索拡張生成）を試すことができます。
+
+## Quick Start
+
+### サーバーのセットアップ
+
+#### 1. サーバーの起動
+
+```bash
+./run.sh
+```
+
+#### 2. クローラの実行
+
+ElasticsearchのステータスがGREENになったら以下コマンドでクローラを実行する。
+```bash
+./run-crawler.sh {クロール設定yaml名}
+```
+
+### MCPホストから利用する
+
+#### Claude Desktop
+
+
+Claude DesktopでMCPを利用する。
+claude_desktop_config.jsonに以下を設定。
+
+```
+{
+  "mcpServers": {
+    "rag-search": {
+      "command": "docker",
+      "args": [
+        "exec",
+        "-i",
+        "rag-mcp-api",
+        "python",
+        "-m",
+        "app.run_stdio"
+      ]
+    }
+  }
+}
+```
+
 
 ## 🚀 機能
 
@@ -319,29 +364,4 @@ curl -X POST http://localhost:8000/mcp \
       }
     }
   }'
-```
-
-## 使い方
-
-### Claude Desktop
-
-Claude DesktopでMCPを利用する。
-claude_desktop_config.jsonに以下を設定。
-
-```
-{
-  "mcpServers": {
-    "rag-search": {
-      "command": "docker",
-      "args": [
-        "exec",
-        "-i",
-        "rag-mcp-api",
-        "python",
-        "-m",
-        "app.run_stdio"
-      ]
-    }
-  }
-}
 ```
