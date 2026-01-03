@@ -72,6 +72,10 @@ requests + BeautifulSoupをベースにしたWebクローラーです。
 - クローラーによって収集されたドキュメントを保存します。
 - MCPサーバーからの検索リクエストに応答します。
 
+### 4. Embedding API (`embedding-api`)
+テキストを意味ベクトルに変換します。
+- OpenAI APIを利用してテキストをベクトル化. openai_token.txtにトークンの記述がある場合のみ動作。
+
 ## 🛠️ 技術スタック
 
 - **コンテナオーケストレーション**: Docker Compose
