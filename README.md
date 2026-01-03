@@ -7,6 +7,9 @@ Dockerだけで完結するため、ローカル環境を汚さずにすぐにRA
 
 ### サーバーのセットアップ
 
+#### 0. (Vector検索を使う場合)
+./openai_token.txtにOpenAI APIのAPI Keyを記載する。
+
 #### 1. サーバーの起動
 
 ```bash

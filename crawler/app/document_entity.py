@@ -10,6 +10,7 @@ class Document:
     title: str
     content: Optional[str]
     content_length: int
+    content_vector: Optional[list[float]]
     mime_type: str
     timestamp: str
 

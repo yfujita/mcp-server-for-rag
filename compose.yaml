@@ -24,6 +24,9 @@ services:
       - ./mcp-api/.env.streamable_http
     ports:
       - "8000:8000"
+    environment:
+      - ENABLE_EMBEDDING=${ENABLE_EMBEDDING:-false}
+      - EMBEDDING_API_URL=http://embedding-api:8000/embed/text-embedding-3-small
     networks:
       - mcp-network
     depends_on:
@@ -41,6 +44,22 @@ services:
       - ES_HOST=elasticsearch
       - ES_PORT=9200
       - CRAWLER_CONFIG_FILE=${CRAWLER_CONFIG_FILE:-crawler_config.yaml}
+      - ENABLE_EMBEDDING=${ENABLE_EMBEDDING:-false}
+      - EMBEDDING_API_URL=http://embedding-api:8000/embed/text-embedding-3-small
+      - EMBEDDING_CHUNK_SIZE=2000
+      - EMBEDDING_CHUNK_OVERLAP=100
+    networks:
+      - mcp-network
+  
+  embedding-api:
+    profiles: ["embedding"]
+    build:
+      context: ./embedding-api
+    container_name: rag-embedding-api
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY} # .envから読み込み
+    ports:
+      - "8001:8000" # ホストからは8001でアクセス
     networks:
       - mcp-network
 

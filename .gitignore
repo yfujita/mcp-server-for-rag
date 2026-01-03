@@ -57,3 +57,6 @@ esdata/
 
 # Crawler Config
 crawler_config.json
+
+# Embedding API Config
+openai_token.txt

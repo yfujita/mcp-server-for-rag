@@ -9,5 +9,5 @@ max_depth: 10
 delay: 0.5
 user_agent: "MSFR Crawler/1.0"
 es_index: "es_1_5_reference"
-es_index_description: "Elasticsearch 1.5 Reference Guide."
+es_index_description: "Elasticsearch 1.5 Reference Guide. Language: English."
 max_documents: 2000

@@ -79,6 +79,12 @@ class ElasticsearchClient:
                     "content_ja": {"type": "text", "analyzer": "kuromoji"},
                     "content_en": {"type": "text", "analyzer": "english_analyzer"},
                     "content_length": {"type": "long"},
+                    "content_vector": {
+                        "type": "dense_vector",
+                        "dims": 1536,         # text-embedding-3-small の次元数
+                        "index": True,        # 検索可能にする
+                        "similarity": "cosine" # コサイン類似度を使用
+                    },
                     "mime_type": {"type": "keyword"},
                     "timestamp": {"type": "date"}
                 }

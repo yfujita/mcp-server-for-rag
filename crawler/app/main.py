@@ -39,21 +39,22 @@ class DocumentProcessor:
 
         logger.info(f"Processing {crawl_result.url}")
         try:
-            document = self.transformer.transform_crawl_result_to_document(crawl_result)
-            doc_id = self._generate_doc_id(document.url)
-            self.es_client.index_document(document, doc_id=doc_id)
-            self.indexed_documents_count += 1
-            logger.info(f"Indexed document for: {crawl_result.url} (Total: {self.indexed_documents_count})")
+            documents = self.transformer.transform_crawl_result_to_document(crawl_result)
+            for idx, document in enumerate(documents):
+                doc_id = self._generate_doc_id(document.url, idx)
+                self.es_client.index_document(document, doc_id=doc_id)
+                self.indexed_documents_count += 1
+                logger.info(f"Indexed documents(chunk {idx}) for: {crawl_result.url} (Total: {self.indexed_documents_count})")
             return True
         except Exception as e:
             logger.error(f"An error occurred during document processing for {crawl_result.url}: {e}")
             return False
 
-    def _generate_doc_id(self, url: str) -> str:
+    def _generate_doc_id(self, url: str, pos: int) -> str:
         """
         URLからElasticsearchのドキュメントIDを生成します。
         """
-        return base64.urlsafe_b64encode(url.encode('utf-8')).decode('ascii')
+        return base64.urlsafe_b64encode(f"{url}_chunk_{pos}".encode('utf-8')).decode('ascii')
 
 def main():
     parser = argparse.ArgumentParser(description="Web Crawler for RAG system.")

@@ -12,6 +12,8 @@ cd "$PROJECT_ROOT"
 BASE_URL="http://localhost:8000/mcp"
 ES_URL="http://localhost:9200"
 
+export ENABLE_EMBEDDING="true"
+
 echo "=== Starting Integration Tests (Streamable HTTP Only) ==="
 
 # 1. サービスの起動確認
@@ -80,10 +82,19 @@ send_request() {
     local session_id=$3
     
     # jqでJSONペイロードを構築
-    local payload=$(jq -n \
-                  --arg method "$method" \
-                  --argjson params "$params" \
-                  '{jsonrpc: "2.0", id: 1, method: $method, params: $params}')
+    local payload=""
+    if [ "$method" == "notifications/initialized" ]; then
+        payload=$(jq -n \
+                      --arg method "$method" \
+                      --argjson params "$params" \
+                      '{jsonrpc: "2.0", method: $method, params: $params}')
+    else
+        # 通常のリクエストは ID を持つ
+        payload=$(jq -n \
+                      --arg method "$method" \
+                      --argjson params "$params" \
+                      '{jsonrpc: "2.0", id: 1, method: $method, params: $params}')
+    fi
 
     if [ -n "$session_id" ]; then
         # Session IDがある場合はヘッダーに付与
