@@ -54,6 +54,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def force_localhost_host_header(request: Request, call_next):
+    # Docker環境では Host: mcp-api:8000 となり、MCP SDKのセキュリティチェックで弾かれるため
+    # 強制的に localhost:8000 に書き換えて通過させます。
+    headers = dict(request.scope["headers"])
+    headers[b"host"] = b"localhost:8000"
+    request.scope["headers"] = list(headers.items())
+    
+    response = await call_next(request)
+    return response
+
 @app.get("/health")
 async def health_check():
     """

@@ -197,7 +197,7 @@ def list_elasticsearch_indices_tool(es_client: ElasticsearchClient) -> IndexList
     indices_info = []
     for idx in indices_raw:
         index_name = idx.get("index")
-        if index_name:
+        if index_name and not index_name.startswith("system-"): # system-で始まるインデックスは除外
             description = ""
             try:
                 # インデックスのマッピングを取得

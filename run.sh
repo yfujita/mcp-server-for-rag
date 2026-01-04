@@ -6,7 +6,7 @@ TOKEN_FILE="openai_token.txt"
 export ENABLE_EMBEDDING="false"
 PROFILES=""
 # デフォルトで起動するサービス
-SERVICES="elasticsearch mcp-api"
+SERVICES="elasticsearch mcp-api chat-api"
 
 # トークンファイルが存在し、かつ空でない(-s)場合
 if [ -f "$TOKEN_FILE" ] && [ -s "$TOKEN_FILE" ]; then
