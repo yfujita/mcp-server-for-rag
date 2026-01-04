@@ -41,7 +41,7 @@ services:
     environment:
       - MCP_SERVER_URL=http://mcp-api:8000/mcp # mcp-apiへの内部URL
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - LLM_MODEL=gpt-4o
+      - LLM_MODEL=gpt-4o-mini
       - ES_URL=http://elasticsearch:9200
     networks:
       - mcp-network
