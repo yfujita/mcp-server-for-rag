@@ -19,7 +19,7 @@ SYSTEM_PROMPT = {
           1. インデックスの一覧を取得し、どのインデックスが質問に関連しそうかを判断します。
           2. 関連しそうなインデックスに対して検索を実行し、関連ドキュメントを見つけます。
           3. 関連ドキュメントの内容を取得します。関連しそうだと判断したドキュメントは全て取得して内容を確認してください。
-          4. 回答するのに十分な情報が含まれていたら回答を生成。不足している場合は、追加でドキュメント取得や検索を行い、情報を補完します。
+          4. 回答するのに十分な情報が含まれていたら回答を生成してください。不足している場合は、追加でドキュメント取得や検索を行い、情報を補完してください。
         回答は分かりやすく具体的に詳細に行い、必要に応じてサンプルや引用を含めてください。
         """
 }
@@ -29,7 +29,9 @@ class ChatService:
         self.session_store = session_store
 
     async def process_chat(self, session_id: str, user_message: str) -> AsyncGenerator[str, None]:
-        
+        # --- セッションIDをクライアントに通知 ---
+        yield self._create_sse_event("session_id", {"session_id": session_id})
+
         # 1. 履歴のロード & ユーザー発話追加
         history = await self.session_store.load_history(session_id)
         if not history:

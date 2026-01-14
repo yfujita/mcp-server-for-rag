@@ -25,3 +25,11 @@ class SessionStore(ABC):
         会話履歴を保存（上書き更新）する。
         """
         pass
+    
+    @abstractmethod
+    async def list_sessions(self, limit: int = 20) -> list[dict[str, Any]]:
+        """
+        保存されているセッションの一覧を取得する。
+        戻り値: [{"session_id": "...", "updated_at": "..."}, ...]
+        """
+        pass
