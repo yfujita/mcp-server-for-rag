@@ -1,0 +1,16 @@
+start_urls:
+  - https://panasonic.jp/manualdl/p-db/fe/fe_kxk07_05.pdf
+allowed_domains:
+  - panasonic.jp
+target_url_patterns:
+  - "https://panasonic.jp/manualdl/p-db/fe/fe_kxk07_05.pdf"
+exclude_url_patterns: []
+max_depth: 50
+delay: 0.5
+user_agent: "MSFR Crawler/1.0"
+es_index: "panasonic_humidifier"
+es_index_description: "Panasonic Humidifier Manual"
+max_documents: 1
+embedding_chunk_size: 2000
+embedding_chunk_overlap: 100
+enable_embedding: true

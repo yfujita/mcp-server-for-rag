@@ -1,8 +1,9 @@
 from bs4 import BeautifulSoup
 from typing import Any, Optional
-import re, os
+import re, os, io
 from datetime import datetime, timezone # トップレベルでインポート
 import requests
+import pypdf
 
 from crawl_result_queue import CrawlResult
 from document_entity import Document
@@ -30,6 +31,8 @@ class ContentTransformer:
 
         if mime_type and 'text/html' in mime_type and crawl_result.content:
             return self._transform_html_content(url, mime_type, timestamp, crawl_result.content)
+        elif mime_type and 'application/pdf' in mime_type and crawl_result.content_bytes:
+            return self._transform_pdf_content(url, mime_type, timestamp, crawl_result.content_bytes)
         else:
             return self._transform_binary_content(url, mime_type, timestamp, crawl_result.content_bytes)
 
@@ -47,6 +50,30 @@ class ContentTransformer:
         text_content = soup.get_text(separator="\n", strip=True)
         text_content = re.sub(r'\n\s*\n', '\n', text_content)
 
+        return self._process_text_content(url, title, mime_type, timestamp, text_content)
+
+    def _transform_pdf_content(self, url: str, mime_type: str, timestamp: str, content_bytes: bytes) -> list[Document]:
+        """
+        PDFコンテンツをElasticsearchドキュメント形式に変換します。
+        """
+        try:
+            reader = pypdf.PdfReader(io.BytesIO(content_bytes))
+            text_content = ""
+            for page in reader.pages:
+                extracted = page.extract_text()
+                if extracted:
+                    text_content += extracted + "\n"
+            
+            title = os.path.basename(url) or "PDF Document"
+            return self._process_text_content(url, title, mime_type, timestamp, text_content)
+        except Exception as e:
+            print(f"Error extracting PDF content from {url}: {e}")
+            return self._transform_binary_content(url, mime_type, timestamp, content_bytes)
+
+    def _process_text_content(self, url: str, title: str, mime_type: str, timestamp: str, text_content: str) -> list[Document]:
+        """
+        テキストコンテンツを処理し、チャンク分割と埋め込みを行ってDocumentリストを返します。
+        """
         documents = []
         if self.enable_embedding and text_content:
             text_chunks = []
