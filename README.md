@@ -2,36 +2,51 @@
 
 WebページをクロールしてElasticsearchに保存し、Claude Desktop や Cline から検索できるようにするMCPサーバーです。
 Dockerだけで完結するため、ローカル環境を汚さずにすぐにRAG（検索拡張生成）を試すことができます。
+チャットUIも同梱されており、ブラウザからも検索・チャットが可能です。
 
-## Quick Start
+## 🚀 Quick Start
 
-### サーバーのセットアップ
+### 1. 準備 (Vector検索を使う場合)
 
-#### 0. (Vector検索を使う場合)
-./openai_token.txtにOpenAI APIのAPI Keyを記載する。
+ベクトル検索（Semantic Search）を行いたい場合は、OpenAIのAPI Keyを設定します。
 
-#### 1. サーバーの起動
+```bash
+# openai_token.txt にAPI Keyを記載（改行なしで保存してください）
+echo "sk-..." > openai_token.txt
+```
+※ ファイルが存在しない、または空の場合は自動的にキーワード検索のみのモードで動作します。
+
+### 2. サーバーの起動
 
 ```bash
 ./run.sh
 ```
+以下のサービスが起動します：
+- **Elasticsearch**: 検索エンジン
+- **MCP API**: RAG検索機能を提供するMCPサーバー
+- **Chat API & View**: ブラウザで使えるチャットUI (`http://localhost:15173`)
+- **Embedding API**: ベクトル化API (API Key設定時のみ)
 
-#### 2. クローラの実行
+### 3. クローラの実行
 
-ElasticsearchのステータスがGREENになったら以下コマンドでクローラを実行する。
+Elasticsearchのインデックスを作成するため、文書をクロールして登録します。Elasticsearchが起動（Health: GREEN/YELLOW）してから実行してください。
+
 ```bash
-./run-crawler.sh {クロール設定yaml名}
+# デフォルト設定で実行
+./run-crawler.sh
+
+# 設定ファイルを指定して実行する場合
+./run-crawler.sh crawler_config_es1.yaml
 ```
 
-### MCPホストから利用する
+## 💻 利用方法
 
-#### Claude Desktop
+### MCPホスト (Claude Desktop / Cline) から利用
 
+Claude Desktopの設定ファイル (`claude_desktop_config.json`) に以下を追加します。
+Dockerコンテナ内の `python -m app.run_stdio` を経由してMCPサーバーと通信します。
 
-Claude DesktopでMCPを利用する。
-claude_desktop_config.jsonに以下を設定。
-
-```
+```json
 {
   "mcpServers": {
     "rag-search": {
@@ -49,326 +64,158 @@ claude_desktop_config.jsonに以下を設定。
 }
 ```
 
+### ブラウザチャットUIから利用
 
-## 🚀 機能
+`./run.sh` で起動後、ブラウザで以下のURLにアクセスします。
+
+- URL: `http://localhost:15173`
+
+RAGによって検索された情報に基づいた回答を生成するチャットアプリケーションが利用できます。
+
+## 📦 機能コンポーネント
+
+システムは以下のマイクロサービスで構成されています。
 
 ### 1. MCP Server (`mcp-api`)
-FastAPIをベースにしたMCPサーバーです。
-- **ツール**:
-    - 検索キーワードにマッチするドキュメントのIDとタイトルのリストを返します。
-    - ドキュメントIDを指定して、ドキュメントの内容を返します。
-    - Elasticsearchのインデックスリストを返します。
-- **リソース**:
-    - 未実装
+FastAPIベースのMCPサーバーです。以下のツールを提供します：
+- **`search`**: クエリにマッチするドキュメントを検索し、ID、タイトル、ハイライトを返します。
+- **`get_document_by_id`**: IDを指定してドキュメントの全文を取得します。
+- **`list_elasticsearch_indices`**: 利用可能なインデックスの一覧を返します。
 
 ### 2. Crawler (`crawler`)
-requests + BeautifulSoupをベースにしたWebクローラーです。
-- 指定されたURLからWebページをクロールし、その内容を抽出します。
-- 抽出されたドキュメントはElasticsearchにインデックスされます。
-- クロール設定は`crawler_config`ディレクトリ内のYAMLファイルで管理されます。
+Requests + BeautifulSoupベースのWebクローラーです。
+- 指定URLをクロールし、Elasticsearchにインデックスします。
+- `crawler_config/` ディレクトリ内のYAMLファイルで動作を定義できます。
 
-### 3. Elasticsearch (`elasticsearch`)
-検索エンジンとして機能します。
-- クローラーによって収集されたドキュメントを保存します。
-- MCPサーバーからの検索リクエストに応答します。
+### 3. Chat Application (`chat-api`, `chat-view`)
+- **Chat API**: `mcp-api` と連携し、LLM (GPT-4o-mini) を用いて回答を生成するバックエンドAPIです。
+- **Chat View**: ReactベースのフロントエンドチャットUIです。
 
-### 4. Embedding API (`embedding-api`)
-テキストを意味ベクトルに変換します。
-- OpenAI APIを利用してテキストをベクトル化. openai_token.txtにトークンの記述がある場合のみ動作。
+### 4. Search Engine (`elasticsearch`, `embedding-api`)
+- **Elasticsearch**: ドキュメントストアおよび検索エンジン (v8.18.1)。
+- **Embedding API**: OpenAI API互換のインターフェースを持ち、テキストをベクトル化します（`openai_token.txt` 設定時のみ有効）。
 
-## 🛠️ 技術スタック
+## ⚙️ 詳細設定
 
-- **コンテナオーケストレーション**: Docker Compose
-- **MCP Server**: Python 3.10, FastAPI
-- **Crawler**: Python 3.10, requests, BeautifulSoup
-- **検索エンジン**: Elasticsearch 8.18.1
+### 環境変数と通信モード
+`mcp-api` は以下の通信モードをサポートしており、`compose.yaml` で指定するenvファイルにより切り替わります。現在は **Streamable HTTP** がデフォルトです。
 
-## ⚙️ セットアップ
+- **Streamable HTTP** (Default): `.env.streamable_http`
+    - Endpoint: `/mcp`
+- **SSE (Server-Sent Events)**: `.env.sse`
+    - Endpoint: `/sse`
 
-### 前提条件
-- Docker
-- Docker Compose
+### 開発・デバッグ
+- 個別にサービスを再起動したい場合は `docker compose restart {service_name}` を利用してください。
+- ログ確認: `docker compose logs -f {service_name}`
 
-### 環境変数の設定
-`mcp-api` サービスは環境変数を使用します。用意された設定ファイルを選択して使用してください：
 
-- SSEモード: `mcp-api/.env.sse`
-- Streamable HTTPモード: `mcp-api/.env.streamable_http`（デフォルト）
+## 🕷️ クローラー設定
 
-`compose.yaml` で使用する設定ファイルを変更できます。
+クローラーの動作は `crawler_config/` ディレクトリ内のYAMLファイルで制御します。
+`crawler_config.yaml` の主な設定項目は以下の通りです。
 
-### サービスの起動
-プロジェクトのルートディレクトリで以下のコマンドを実行し、ElasticsearchとMCP APIサーバーを起動します。
+```yaml
+# クロールを開始するURLのリスト
+start_urls:
+  - https://example.com/start-page
 
-**方法1: スクリプトを使用**
-```bash
-./run.sh
+# クロールを許可するドメイン（これ以外のドメインには遷移しません）
+allowed_domains:
+  - example.com
+
+# クロール対象とするURLの正規表現パターン
+target_url_patterns:
+  - "https://example\\.com/docs/.*"
+
+# 除外するURLの正規表現パターン
+exclude_url_patterns:
+  - ".*\\.pdf"
+
+# クロールの最大深さ（0はstart_urlsのみ）
+max_depth: 10
+
+# リクエスト間の遅延時間（秒）- サーバーへの負荷軽減のため
+delay: 0.5
+
+# User-Agent文字列
+user_agent: "MSFR Crawler/1.0"
+
+# 保存先のElasticsearchインデックス名
+es_index: "my_index"
+
+# インデックスの説明（LLMがツール選択時に使用）
+es_index_description: "Example documentation index."
+
+# 最大取得ドキュメント数（テスト等の制限用）
+max_documents: 20
 ```
 
-**方法2: docker composeを直接実行**
-```bash
-docker compose up -d elasticsearch mcp-api
-```
+---
 
-### クローラーの実行
-クローラーは手動で実行します。専用のスクリプトを使用して起動できます。
 
-**方法1: スクリプトを使用（推奨）**
-```bash
-# デフォルト設定ファイル（crawler_config.yaml）を使用
-./run-crawler.sh
+## 📚 Appendix: 開発者向けテスト情報
 
-# 特定の設定ファイルを指定
-./run-crawler.sh crawler_config_es1.yaml
-./run-crawler.sh crawler_config_it.yaml
-```
+`curl` を使用してMCPサーバーの動作を確認するコマンド例です。
 
-**方法2: docker composeを直接実行**
-```bash
-# デフォルト設定ファイルを使用
-docker compose up crawler
+### Streamable HTTP モードのテスト (Default)
 
-# 特定の設定ファイルを指定
-CRAWLER_CONFIG_FILE=crawler_config_es1.yaml docker compose up crawler
-```
-
-**利用可能な設定ファイル:**
-- `crawler_config.yaml` - デフォルト設定
-- `crawler_config_es1.yaml` - Elasticsearch 1.5 ドキュメント用設定
-- `crawler_config_it.yaml` - IT関連ドキュメント用設定
-
-各設定ファイルは `crawler_config/` ディレクトリに配置され、クロール対象のURLや深さなどを定義します。
-
-## 🌐 MCPエンドポイント
-
-MCPサーバーのエンドポイントは、設定ファイルで指定される `MCP_TRANSPORT_TYPE` に応じて異なります。
-- `MCP_TRANSPORT_TYPE=sse` の場合: `/sse`
-- `MCP_TRANSPORT_TYPE=streamable-http` の場合: `/mcp`（デフォルト）
-
-現在は `compose.yaml` で `.env.streamable_http` がデフォルトで使用されます。
-
-## MCP IF
-
-### MCPツールの利用例
-
-#### ドキュメント検索 (`search`)
-タイトルまたはコンテンツにキーワードを含むドキュメントを検索し、{id, title, highlight} のリストを返します。指定されたindexを検索し、ページネーション機能も提供します。
-
-```json
-{
-  "tool_name": "search",
-  "arguments": {
-    "query": "検索するキーワード",
-    "index": "検索対象のElasticsearchインデックス名",
-    "cursor": "ページネーション用カーソル (オプション)。前回の検索結果から取得します。"
-  }
-}
-```
-
-#### ドキュメントIDによる取得 (`get_document_by_id`)
-ドキュメントIDを指定して全文を取得します。
-
-```json
-{
-  "tool_name": "get_document_by_id",
-  "arguments": {
-    "document_id": "取得したいドキュメントのID",
-    "index": "ドキュメントが保存されているElasticsearchインデックス名"
-  }
-}
-```
-
-#### Elasticsearchインデックスのリスト取得 (`list_elasticsearch_indices`)
-Elasticsearchの全インデックスのリストと説明を返します。説明は各インデックスの `_meta.description` から自動取得されます。
-
-```json
-{
-  "tool_name": "list_elasticsearch_indices",
-  "arguments": {}
-}
-```
-
-### MCPリソースの利用例
-
-**注意**: 現在の実装ではMCPリソース機能は提供されていません。ドキュメントの内容は `get_document_by_id` ツールを使用してアクセスしてください。
-
-## 🧪 curlでSSEテスト
-
-**注意**: SSEモードを使用する場合は、`compose.yaml` で `.env.sse` を有効にしてください。
-
-### SSE接続の開始
-
-```bash
-# SSEエンドポイントに接続してイベントストリームを開始
-curl -N -H "Accept: text/event-stream" http://localhost:8000/sse
-```
-
-レスポンスからセッションIDを取得：
-```
-event: endpoint
-data: /messages/?session_id=セッションID
-```
-
-### 2. MCPプロトコルテスト
-
-#### 初期化
-```bash
-curl -X POST -H "Content-Type: application/json" \
-  --data '{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "clientInfo": {"name": "curl-test", "version": "1.0.0"}}}' \
-  "http://localhost:8000/messages/?session_id=セッションID"
-```
-
-#### ツール一覧の取得
-```bash
-curl -X POST -H "Content-Type: application/json" \
-  --data '{"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}' \
-  "http://localhost:8000/messages/?session_id=セッションID"
-```
-
-#### インデックス一覧の取得
-```bash
-curl -X POST -H "Content-Type: application/json" \
-  --data '{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "list_elasticsearch_indices", "arguments": {}}}' \
-  "http://localhost:8000/messages/?session_id=セッションID"
-```
-
-#### ドキュメント検索
-```bash
-curl -X POST -H "Content-Type: application/json" \
-  --data '{"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "search", "arguments": {"query": "elasticsearch", "index": "インデックス名"}}}' \
-  "http://localhost:8000/messages/?session_id=セッションID"
-```
-
-#### ドキュメント詳細取得
-```bash
-curl -X POST -H "Content-Type: application/json" \
-  --data '{"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "get_document_by_id", "arguments": {"document_id": "ドキュメントID", "index": "インデックス名"}}}' \
-  "http://localhost:8000/messages/?session_id=セッションID"
-```
-
-### テスト例
-
-```bash
-# 1. SSE接続開始（バックグラウンドで実行）
-curl -N -H "Accept: text/event-stream" http://localhost:8000/sse &
-
-# 2. レスポンスからセッションIDを確認し、環境変数に設定
-export SESSION_ID="取得したセッションID"
-
-# 3. 初期化
-curl -X POST -H "Content-Type: application/json" \
-  --data '{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "clientInfo": {"name": "curl-test", "version": "1.0.0"}}}' \
-  "http://localhost:8000/messages/?session_id=$SESSION_ID"
-
-# ツール一覧
-curl -X POST -H "Content-Type: application/json" \
-  --data '{"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}}' \
-  "http://localhost:8000/messages/?session_id=$SESSION_ID"
-```
-
-## curlでStreamable HTTPテスト
-
-**注意**: デフォルトで `compose.yaml` は `.env.streamable_http` を使用し、エンドポイントは `/mcp` になります。
-
-### 初期化
-
-レスポンスヘッダ中の `mcp-session-id` をメモる。
+**1. 初期化 (Initialize)**
+レスポンスヘッダの `Mcp-Session-Id` が必要になります。
 
 ```bash
 curl -i -X POST http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -d '{
-    "jsonrpc": "2.0",
-    "id": 1,
-    "method": "initialize",
+    "jsonrpc": "2.0", "id": 1, "method": "initialize",
     "params": {
       "protocolVersion": "2024-11-05",
-      "capabilities": {
-        "roots": {
-          "listChanged": true
-        },
-        "sampling": {}
-      },
-      "clientInfo": {
-        "name": "curl-client",
-        "version": "1.0.0"
-      }
+      "capabilities": { "roots": { "listChanged": true }, "sampling": {} },
+      "clientInfo": { "name": "curl-client", "version": "1.0.0" }
     }
   }'
 ```
 
-### ツール取得
+**2. ツール実行 (例: インデックス一覧取得)**
+取得した `Mcp-Session-Id` をヘッダにセットしてください。
 
 ```bash
+# SESSION_ID="<取得したID>"
 curl -X POST http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
-  -H "Mcp-Session-Id: 12d6c8d3655441b581236946d73b68b5" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
   -d '{
-    "jsonrpc": "2.0",
-    "id": 2,
-    "method": "tools/list",
-    "params": {}
+    "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+    "params": { "name": "list_elasticsearch_indices", "arguments": {} }
   }'
 ```
 
-### インデックス一覧取得
+### SSE モードのテスト (Optional)
+
+`.env.sse` を使用している場合のテスト手順です。
+
+<details>
+<summary>SSEテストコマンドを開く</summary>
 
 ```bash
-curl -X POST http://localhost:8000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -H "Mcp-Session-Id: 12d6c8d3655441b581236946d73b68b5" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 3,
-    "method": "tools/call",
-    "params": {
-      "name": "list_elasticsearch_indices",
-      "arguments": {}
-    }
-  }'
+# 1. SSE接続開始（バックグラウンドで実行）
+curl -N -H "Accept: text/event-stream" http://localhost:8000/sse &
+
+# 2. 上記レスポンスの `endpoint` URLからセッションIDを確認し設定
+# data: /messages/?session_id=abcd... => abcd...
+export SESSION_ID="<取得したセッションID>"
+
+# 3. 初期化
+curl -X POST -H "Content-Type: application/json" \
+  --data '{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}}, "clientInfo": {"name": "curl-test", "version": "1.0.0"}}}' \
+  "http://localhost:8000/messages/?session_id=$SESSION_ID"
+
+# 4. 検索実行
+curl -X POST -H "Content-Type: application/json" \
+  --data '{"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "search", "arguments": {"query": "elasticsearch", "index": "es_1_5_reference"}}}' \
+  "http://localhost:8000/messages/?session_id=$SESSION_ID"
 ```
 
-### 検索
-
-```bash
-curl -X POST http://localhost:8000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -H "Mcp-Session-Id: 12d6c8d3655441b581236946d73b68b5" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 4,
-    "method": "tools/call",
-    "params": {
-      "name": "search",
-      "arguments": {
-        "query": "elasticsearch",
-        "index": "es_1_5_reference"
-      }
-    }
-  }'
-```
-
-### ドキュメント取得
-
-```bash
-curl -X POST http://localhost:8000/mcp \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -H "Mcp-Session-Id: 12d6c8d3655441b581236946d73b68b5" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 5,
-    "method": "tools/call",
-    "params": {
-      "name": "get_document_by_id",
-      "arguments": {
-        "document_id": "aHR0cHM6Ly93d3cuZWxhc3RpYy5jby9ndWlkZS9lbi9lbGFzdGljc2VhcmNoL3JlZmVyZW5jZS8xLjUvc2V0dXAtZGlyLWxheW91dC5odG1s",
-        "index": "es_1_5_reference"
-      }
-    }
-  }'
-```
+</details>
