@@ -47,6 +47,19 @@ services:
       - mcp-network
     depends_on:
       - mcp-api
+  
+  chat-view:
+    build:
+      context: ./chat-view
+    container_name: rag-chat-view
+    ports:
+      - "15173:5173" # ホストの5173番ポートでアクセス
+    environment:
+      - CHAT_API_URL=http://chat-api:8000
+    networks:
+      - mcp-network
+    depends_on:
+      - chat-api
 
   crawler:
     build: ./crawler

@@ -7,6 +7,8 @@ from mcp import ClientSession
 from ..clients.llm.factory import llm_client
 from ..clients.mcp_client import mcp_client
 from ..stores.session.base import SessionStore
+# 型判定のためにインポート
+from ..clients.llm.base import StreamContentEvent, StreamToolCallEvent
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +42,6 @@ class ChatService:
         history.append({"role": "user", "content": user_message})
         await self.session_store.save_history(session_id, history)
 
-        assistant_response_content = ""
-        
         # 最大ループ回数（無限ループ防止）
         MAX_STEPS = 20
 
@@ -57,21 +57,40 @@ class ChatService:
                     for step in range(MAX_STEPS):
                         logger.info(f"Step {step + 1}/{MAX_STEPS}")
 
-                        # 2. LLM推論 (Tool Call判定)
-                        # ここで現在のhistory(ツール実行結果含む)を元に次の行動を決定
-                        llm_response = await llm_client.create_completion(
+                        hybrid_stream = llm_client.create_hybrid_stream(
                             messages=history,
                             tools=llm_tools
                         )
+                        
+                        assistant_response_content = ""
+                        tool_response_obj = None
 
-                        # 思考過程を履歴に追加
-                        # (openai_client.pyの修正で raw_message は辞書化されている前提)
-                        history.append(llm_response.raw_message)
-
-                        if llm_response.tool_calls:
-                            # --- ケースA: ツール実行が必要 ---
+                        # ▼▼▼ ここを修正しました（変数名を event に統一） ▼▼▼
+                        async for event in hybrid_stream:
                             
-                            for tool_call in llm_response.tool_calls:
+                            if event.type == "content":
+                                # テキスト生成中
+                                content_chunk = event.delta
+                                assistant_response_content += content_chunk
+                                yield self._create_sse_event("message", {"content": content_chunk})
+                            
+                            elif event.type == "tool_call":
+                                # ツール実行オブジェクト (ストリーム完了時に1回だけ来る)
+                                tool_response_obj = event.response
+                        # ▲▲▲ 修正ここまで ▲▲▲
+
+                        # === ループ後の処理 ===
+
+                        # ツール実行が必要だった場合
+                        if tool_response_obj:
+                            # 1. 履歴に追加 (raw_message)
+                            history.append(tool_response_obj.raw_message)
+
+                            # 2. ツール実行ループ
+                            # tool_response_obj.tool_calls が None の可能性も考慮して安全にアクセス
+                            tool_calls = tool_response_obj.tool_calls or []
+                            
+                            for tool_call in tool_calls:
                                 func_name = tool_call.name
                                 func_args = tool_call.arguments
                                 
@@ -98,13 +117,10 @@ class ChatService:
 
                         else:
                             # --- ケースB: ツール実行不要（最終回答） ---
-                            
-                            # ストリーミング生成
-                            stream = llm_client.create_streaming_completion(history)
-                            
-                            async for content_chunk in stream:
-                                assistant_response_content += content_chunk
-                                yield self._create_sse_event("message", {"content": content_chunk})
+                            # 最終回答を履歴に保存して終了
+                            if assistant_response_content:
+                                history.append({"role": "assistant", "content": assistant_response_content})
+                                await self.session_store.save_history(session_id, history)
                             
                             # 回答完了したらループを抜ける
                             break
@@ -116,11 +132,6 @@ class ChatService:
                         assistant_response_content += fallback_msg
                         yield self._create_sse_event("message", {"content": fallback_msg})
 
-            # 5. 完了後に履歴を更新して保存
-            if assistant_response_content:
-                history.append({"role": "assistant", "content": assistant_response_content})
-                await self.session_store.save_history(session_id, history)
-            
             yield self._create_sse_event("done", {})
 
         except Exception as e:

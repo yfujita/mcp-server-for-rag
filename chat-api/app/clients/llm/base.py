@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator, Optional
+from typing import Any, AsyncGenerator, Optional, Literal, Union
 from dataclasses import dataclass
 
 # --- 統一データモデル ---
@@ -17,6 +17,21 @@ class LLMResponse:
     content: Optional[str]
     tool_calls: Optional[list[ToolCallInfo]]
     raw_message: Any  # 履歴保存用に元のメッセージオブジェクトも保持しておく
+
+@dataclass
+class StreamContentEvent:
+    """テキスト生成中のイベント"""
+    delta: str
+    type: Literal["content"] = "content"
+
+@dataclass
+class StreamToolCallEvent:
+    """ツール呼び出しが確定した時のイベント"""
+    response: LLMResponse
+    type: Literal["tool_call"] = "tool_call"
+
+# 戻り値の型として使う Union 型
+StreamEvent = Union[StreamContentEvent, StreamToolCallEvent]
 
 # --- インターフェース ---
 
@@ -44,6 +59,17 @@ class LLMClient(ABC):
         self,
         messages: list[dict[str, Any]]
     ) -> AsyncGenerator[str, None]:
+        """
+        ストリーミングチャット完了リクエスト。
+        最終的な回答生成に使用。テキストのチャンクをyieldする。
+        """
+        pass
+    
+    @abstractmethod
+    async def create_hybrid_stream(
+        self,
+        messages: list[dict[str, Any]]
+    ) -> AsyncGenerator[StreamEvent, None]:
         """
         ストリーミングチャット完了リクエスト。
         最終的な回答生成に使用。テキストのチャンクをyieldする。
