@@ -83,7 +83,17 @@ def search_tool(es_client: ElasticsearchClient, query: str, index: str, cursor: 
         },
         "size": rrf_window_size,
         "_source": {"excludes": ["content_vector"]},
-        "highlight": { "fields": { "content": {}, "title": {} }, "pre_tags": ["<em>"], "post_tags": ["</em>"] }
+        "highlight": { 
+            "fields": { 
+                "content": {}, 
+                "title": {},
+                "content_ja": {},
+                "content_en": {},
+                "content_ngram": {}
+            }, 
+            "pre_tags": ["<em>"], 
+            "post_tags": ["</em>"] 
+        }
     }
     
     try:
@@ -151,7 +161,7 @@ def search_tool(es_client: ElasticsearchClient, query: str, index: str, cursor: 
 def _extract_highlight(hit: Dict[str, Any]) -> Optional[Dict[str, List[str]]]:
     """
     Elasticsearchのヒット結果からハイライト情報を抽出します。
-    優先順位: content_ja -> content_ngram -> content
+    優先順位: content_ja -> content_en -> content_ngram -> content
     """
     highlight = None
     if "highlight" in hit:
@@ -159,6 +169,8 @@ def _extract_highlight(hit: Dict[str, Any]) -> Optional[Dict[str, List[str]]]:
         highlight = {}
         if "content_ja" in highlight_data:
             highlight["content"] = highlight_data["content_ja"]
+        elif "content_en" in highlight_data:
+            highlight["content"] = highlight_data["content_en"]
         elif "content_ngram" in highlight_data:
             highlight["content"] = highlight_data["content_ngram"]
         elif "content" in highlight_data:

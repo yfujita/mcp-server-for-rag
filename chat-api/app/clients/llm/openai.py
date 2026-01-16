@@ -120,7 +120,7 @@ class OpenAIClient(LLMClient):
                 "role": "assistant",
                 "content": collected_content if collected_content else None,
                 "tool_calls": [
-                    {"id": tc.id, "type": "function", "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)}}
+                    {"id": tc.id, "type": "function", "function": {"name": tc.name, "arguments": json.dumps(tc.arguments, ensure_ascii=False)}}
                     for tc in final_tool_calls
                 ]
             }
