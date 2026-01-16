@@ -47,6 +47,7 @@ class IndexListResult(BaseModel):
 
 # 検索を実行するツール関数
 def search_tool(es_client: ElasticsearchClient, query: str, index: str, cursor: Optional[str]) -> SearchResults:
+    logger.info(f"[search_tool] query: {query}, index: {index}, cursor: {cursor}")
     # 1. 設定
     enable_embedding = config.ENABLE_EMBEDDING
     
@@ -169,6 +170,7 @@ def _extract_highlight(hit: Dict[str, Any]) -> Optional[Dict[str, List[str]]]:
 
 # ドキュメントIDを指定して全文を取得するツール関数
 def get_document_by_id_tool(es_client: ElasticsearchClient, document_id: str, index: str) -> DocumentContent:
+    logger.info(f"[get_document_by_id_tool] document_id: {document_id}, index: {index}")
     """
     ドキュメントIDを指定して全文を取得します。
     This function implements the 'get_document_by_id' tool logic.
@@ -189,6 +191,7 @@ def get_document_by_id_tool(es_client: ElasticsearchClient, document_id: str, in
 
 # インデックス一覧を取得するツール関数
 def list_elasticsearch_indices_tool(es_client: ElasticsearchClient) -> IndexListResult:
+    logger.info(f"[list_elasticsearch_indices_tool] list_elasticsearch_indices_tool")
     """
     Elasticsearchの全インデックスのリストと説明を返します。
     This function implements the 'list_elasticsearch_indices' tool logic.
@@ -225,7 +228,8 @@ def list_elasticsearch_indices_tool(es_client: ElasticsearchClient) -> IndexList
                 else:
                     description = f"'{index_name}' に関連するドキュメントのインデックス"
             indices_info.append(IndexInfo(name=index_name, description=description))
-    
+            
+    logger.info(f"[list_elasticsearch_indices_tool] indices_info: {indices_info}")
     return IndexListResult(indices=indices_info)
 
 def _get_query_embedding(query: str) -> Optional[List[float]]:

@@ -1,5 +1,6 @@
 import os
 import requests
+from urllib.parse import quote
 
 # Elasticsearchでドキュメントが見つからなかった場合に投げられる例外クラス
 class NotFoundError(Exception):
@@ -54,7 +55,9 @@ class ElasticsearchClient:
         :return: id, title, contentを含む辞書
         :raises NotFoundError: ドキュメントが存在しない場合
         """
-        url = f"{self.base_url}/{index}/_doc/{doc_id}"
+        # IDをURLエンコードして安全にする
+        safe_doc_id = quote(doc_id)
+        url = f"{self.base_url}/{index}/_doc/{safe_doc_id}"
         response = self.session.get(url)
         # ステータスコード404ならドキュメント未検出として例外を発生
         if response.status_code == 404:

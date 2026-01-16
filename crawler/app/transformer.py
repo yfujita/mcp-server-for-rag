@@ -97,6 +97,7 @@ class ContentTransformer:
             title=title,
             content=None, # バイナリコンテンツはテキストとして保存しない
             content_length=content_length,
+            content_vector=None,
             mime_type=mime_type,
             timestamp=timestamp
         )]

@@ -64,6 +64,19 @@ Dockerコンテナ内の `python -m app.run_stdio` を経由してMCPサーバ�
 }
 ```
 
+### RAGモードの利用 (Claude Desktop)
+
+Claude Desktopでは、あらかじめ定義されたプロンプトを呼び出す機能があります。
+このMCPサーバーは `rag_mode` というプロンプトを提供しており、RAG検索に特化したシステム指示をLLMに与えることができます。
+
+チャット入力欄で `/rag_mode` と入力してEnterキーを押す（またはメニューから選択する）と、RAG検索モードが有効になります。
+このモードでは、以下の手順で回答を行うよう指示されます：
+1. インデックス一覧の確認
+2. 適切なインデックスからの検索
+3. 必要に応じた詳細ドキュメントの取得
+4. 事実に基づいた回答
+
+
 ### ブラウザチャットUIから利用
 
 `./run.sh` で起動後、ブラウザで以下のURLにアクセスします。
@@ -149,6 +162,17 @@ es_index_description: "Example documentation index."
 
 # 最大取得ドキュメント数（テスト等の制限用）
 max_documents: 20
+
+# Embedding設定（オプション）
+# Chunkサイズ（文字数）
+embedding_chunk_size: 1000
+
+# Chunkのオーバーラップ（文字数）
+embedding_chunk_overlap: 100
+
+# Embeddingを有効にするかどうか (true/false)
+# trueの場合、Embedding APIを使用してベクトル化を行います
+enable_embedding: false
 ```
 
 ---
