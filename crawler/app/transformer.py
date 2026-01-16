@@ -12,11 +12,11 @@ class ContentTransformer:
     クロールしたコンテンツをElasticsearchに保存するために整形するクラス。
     """
 
-    def __init__(self):
-        self.enable_embedding = os.getenv("ENABLE_EMBEDDING", "false").lower() == "true"
+    def __init__(self, chunk_size: int = 2000, chunk_overlap: int = 100, enable_embedding: bool = False):
+        self.enable_embedding = enable_embedding
         self.embedding_api_url = os.getenv("EMBEDDING_API_URL", "")
-        self.chunk_size = int(os.getenv("EMBEDDING_CHUNK_SIZE", "2000"))
-        self.chunk_overlap = int(os.getenv("EMBEDDING_CHUNK_OVERLAP", "100"))
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
 
     def transform_crawl_result_to_document(self, crawl_result: CrawlResult) -> list[Document]:
         """

@@ -11,3 +11,6 @@ user_agent: "MSFR Crawler/1.0"
 es_index: "test_index"
 es_index_description: "Elasticsearch 1.5 Reference Guide."
 max_documents: 20
+embedding_chunk_size: 2000
+embedding_chunk_overlap: 100
+enable_embedding: false

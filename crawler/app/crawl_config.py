@@ -13,6 +13,9 @@ class CrawlerConfig(BaseModel):
     es_index: str = Field(..., description="Elasticsearchのインデックス名")
     es_index_description: str = Field(..., description="Elasticsearchインデックスの説明")
     max_documents: Optional[int] = Field(default=None, description="Elasticsearchに追加するドキュメントの最大数")
+    embedding_chunk_size: int = Field(default=2000, description="Embeddingを行う際のチャンクサイズ")
+    embedding_chunk_overlap: int = Field(default=100, description="Embeddingを行う際のチャンクオーバーラップ")
+    enable_embedding: bool = Field(default=False, description="Embeddingを行うかどうか")
 
     @classmethod
     def from_yaml(cls, file_path: str):

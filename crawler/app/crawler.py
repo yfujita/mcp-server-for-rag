@@ -116,6 +116,8 @@ class WebCrawler:
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
 
+        response.encoding = response.apparent_encoding
+
         mime_type = response.headers.get('Content-Type', '').split(';')[0].strip()
         html_content = response.text if 'text/html' in mime_type else None
 

@@ -87,7 +87,11 @@ def main():
         logger.info("Elasticsearch client initialized.")
 
         logger.info("Initializing Content Transformer...")
-        transformer = ContentTransformer()
+        transformer = ContentTransformer(
+            chunk_size=config.embedding_chunk_size,
+            chunk_overlap=config.embedding_chunk_overlap,
+            enable_embedding=config.enable_embedding
+        )
         logger.info("Content Transformer initialized.")
 
         crawl_target_queue = CrawlTargetQueue()
