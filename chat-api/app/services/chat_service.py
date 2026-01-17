@@ -64,7 +64,7 @@ class ChatService:
                     for step in range(MAX_STEPS):
                         logger.info(f"Step {step + 1}/{MAX_STEPS}")
 
-                        hybrid_stream = llm_client.create_hybrid_stream(
+                        hybrid_stream = llm_client.create_chat_stream(
                             messages=history,
                             tools=llm_tools
                         )
@@ -72,21 +72,15 @@ class ChatService:
                         assistant_response_content = ""
                         tool_response_obj = None
 
-                        # ▼▼▼ ここを修正しました（変数名を event に統一） ▼▼▼
                         async for event in hybrid_stream:
-                            
                             if event.type == "content":
                                 # テキスト生成中
                                 content_chunk = event.delta
                                 assistant_response_content += content_chunk
                                 yield self._create_sse_event("message", {"content": content_chunk})
-                            
                             elif event.type == "tool_call":
                                 # ツール実行オブジェクト (ストリーム完了時に1回だけ来る)
                                 tool_response_obj = event.response
-                        # ▲▲▲ 修正ここまで ▲▲▲
-
-                        # === ループ後の処理 ===
 
                         # ツール実行が必要だった場合
                         if tool_response_obj:

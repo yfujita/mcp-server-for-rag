@@ -66,9 +66,10 @@ class LLMClient(ABC):
         pass
     
     @abstractmethod
-    async def create_hybrid_stream(
+    async def create_chat_stream(
         self,
-        messages: list[dict[str, Any]]
+        messages: list[dict[str, Any]],
+        tools: Optional[list[dict[str, Any]]] = None
     ) -> AsyncGenerator[StreamEvent, None]:
         """
         ストリーミングチャット完了リクエスト。

@@ -62,7 +62,7 @@ class OpenAIClient(LLMClient):
         )
 
     # ▼▼▼ create_hybrid_stream の実装（ここが重要です） ▼▼▼
-    async def create_hybrid_stream(
+    async def create_chat_stream(
         self, 
         messages: list[dict[str, Any]],
         tools: Optional[list[dict[str, Any]]] = None
